@@ -1,0 +1,5 @@
+# Fins de ligne Linux partout : les fichiers sont exécutés dans des conteneurs Docker.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary

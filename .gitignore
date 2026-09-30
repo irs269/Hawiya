@@ -1,0 +1,34 @@
+# Secrets et environnement local
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Flutter / Android
+mobile/.dart_tool/
+mobile/build/
+mobile/.flutter-plugins*
+*.keystore
+*.jks
+
+# Java
+matcher/build/
+matcher/.gradle/
+matcher/target/
+
+# Web
+node_modules/
+dashboard/dist/
+
+# Captures d'empreintes (jamais versionnées)
+captures/
+evaluation/donnees/
+
+# Outils
+.idea/
+.vscode/
+.DS_Store
