@@ -7,7 +7,15 @@ class MainDetectee {
     required this.confiance,
     required this.points,
     required this.paume,
+    this.etiquetteBrute = '',
+    this.produit = 0,
   });
+
+  /// Diagnostic : étiquette MediaPipe avant correction (« Left »/« Right »).
+  final String etiquetteBrute;
+
+  /// Diagnostic : signe du produit vectoriel utilisé pour paume/dos.
+  final double produit;
 
   /// « droite » ou « gauche », du point de vue de la personne filmée.
   final String cote;
@@ -29,6 +37,8 @@ class MainDetectee {
           Offset(valeurs[i].toDouble(), valeurs[i + 1].toDouble()),
       ],
       paume: m['paume'] as bool,
+      etiquetteBrute: m['etiquetteBrute'] as String? ?? '',
+      produit: (m['produit'] as num?)?.toDouble() ?? 0,
     );
   }
 }

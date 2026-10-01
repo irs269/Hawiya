@@ -2,6 +2,7 @@ package km.hawiya.hawiya.capture
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.util.Log
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.Delegate
@@ -18,12 +19,18 @@ data class MainDetectee(
     val points: FloatArray,
     /** Estimation géométrique : la paume (et non le dos) est-elle tournée vers la caméra ? */
     val paumeVersCamera: Boolean,
+    /** Diagnostic : étiquette MediaPipe brute (« Left »/« Right »), avant correction. */
+    val etiquetteBrute: String,
+    /** Diagnostic : produit vectoriel poignet→index × poignet→auriculaire (en pixels). */
+    val produit: Float,
 ) {
     fun versMap(): Map<String, Any> = mapOf(
         "cote" to cote,
         "confiance" to confiance.toDouble(),
         "points" to points.map { it.toDouble() },
         "paume" to paumeVersCamera,
+        "etiquetteBrute" to etiquetteBrute,
+        "produit" to produit.toDouble(),
     )
 }
 
@@ -81,15 +88,23 @@ class DetecteurMain(context: Context) : Closeable {
         return resultat.landmarks().indices.map { i ->
             val reperesMain = resultat.landmarks()[i]
             val categorie = resultat.handedness()[i].first()
-            // MediaPipe suppose une image miroir (caméra frontale) : avec la caméra
-            // arrière, son « Left » correspond à la main DROITE de la personne.
-            val cote = if (categorie.categoryName() == "Left") "droite" else "gauche"
+            // Vérifié sur Galaxy S23 Ultra (01/10/2026) : avec les images de la caméra
+            // arrière, l'étiquette MediaPipe correspond DIRECTEMENT à la main de la
+            // personne (« Left » = main gauche). Aucune inversion à faire.
+            val cote = if (categorie.categoryName() == "Left") "gauche" else "droite"
             val points = FloatArray(reperesMain.size * 2)
             reperesMain.forEachIndexed { j, p ->
                 points[2 * j] = p.x()
                 points[2 * j + 1] = p.y()
             }
-            MainDetectee(cote, categorie.score(), points, estPaume(points, cote))
+            val produit = produitVectoriel(points, image.width, image.height)
+            val paume = if (cote == "droite") produit < 0 else produit > 0
+            Log.d(
+                "Hawiya",
+                "main brute=${categorie.categoryName()} score=${"%.2f".format(categorie.score())} " +
+                    "cote=$cote produit=${"%.0f".format(produit)} paume=$paume",
+            )
+            MainDetectee(cote, categorie.score(), points, paume, categorie.categoryName(), produit)
         }
     }
 
@@ -98,15 +113,15 @@ class DetecteurMain(context: Context) : Closeable {
      * Main droite, paume face à la caméra (doigts vers le haut) : l'index est à
      * droite de l'auriculaire sur l'image, le produit vectoriel est négatif.
      * C'est l'inverse pour la main gauche. Indépendant de l'inclinaison de la main.
-     * ⚠️ Dépend du côté donné par MediaPipe : à confirmer sur téléphone (étape 3a).
+     * Confirmé sur téléphone : paume gauche → produit > 0, dos de la main gauche → produit < 0.
      */
-    private fun estPaume(p: FloatArray, cote: String): Boolean {
-        val ax = p[2 * BASE_INDEX] - p[2 * POIGNET]
-        val ay = p[2 * BASE_INDEX + 1] - p[2 * POIGNET + 1]
-        val bx = p[2 * BASE_AURICULAIRE] - p[2 * POIGNET]
-        val by = p[2 * BASE_AURICULAIRE + 1] - p[2 * POIGNET + 1]
-        val produit = ax * by - ay * bx
-        return if (cote == "droite") produit < 0 else produit > 0
+    private fun produitVectoriel(p: FloatArray, largeur: Int, hauteur: Int): Float {
+        // En pixels : x et y normalisés n'ont pas la même échelle sur une image 3:4.
+        val ax = (p[2 * BASE_INDEX] - p[2 * POIGNET]) * largeur
+        val ay = (p[2 * BASE_INDEX + 1] - p[2 * POIGNET + 1]) * hauteur
+        val bx = (p[2 * BASE_AURICULAIRE] - p[2 * POIGNET]) * largeur
+        val by = (p[2 * BASE_AURICULAIRE + 1] - p[2 * POIGNET + 1]) * hauteur
+        return ax * by - ay * bx
     }
 
     override fun close() = reperes.close()

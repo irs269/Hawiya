@@ -303,7 +303,9 @@ class _EcranTestCameraState extends State<EcranTestCamera> {
         _ => 'CHAUD (${a!.thermique})',
       }),
       for (final m in mains)
-        ('Main ${m.cote}', '${(m.confiance * 100).round()} % · ${m.paume ? 'paume' : 'dos ?'}'),
+        ('Main ${m.cote}',
+            '${(m.confiance * 100).round()} % · ${m.paume ? 'paume' : 'dos ?'} · '
+                'brut ${m.etiquetteBrute} · produit ${m.produit < 0 ? '−' : '+'}'),
     ];
     return Container(
       padding: const EdgeInsets.all(14),

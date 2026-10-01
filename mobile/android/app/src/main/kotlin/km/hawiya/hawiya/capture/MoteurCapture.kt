@@ -160,6 +160,8 @@ class MoteurCapture(
             }
         }
         detecteur?.let { infos["delegue"] = it.delegue }
+        // Trace du diagnostic, pour comparer les téléphones sans capture d'écran.
+        android.util.Log.i("Hawiya", "diagnostic camera : ${infos.toSortedMap()}")
     }
 
     // ------------------------------------------------------------------ analyse
