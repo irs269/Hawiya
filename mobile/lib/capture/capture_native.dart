@@ -293,6 +293,7 @@ class CaptureNative {
     required bool debogage,
     required double seuilNettete,
     Offset? miseAuPoint,
+    Map<String, Object?> contexte = const {},
   }) async {
     final reponse = await _canal.invokeMapMethod<Object?, Object?>('capturer', {
       'main': main,
@@ -300,6 +301,8 @@ class CaptureNative {
       'session': session,
       'debogage': debogage,
       'seuilNettete': seuilNettete,
+      // Mesures de pose au déclenchement (JSON de débogage, calibrage des seuils).
+      'contexte': contexte,
       if (miseAuPoint != null) 'x': miseAuPoint.dx,
       if (miseAuPoint != null) 'y': miseAuPoint.dy,
     });

@@ -56,8 +56,12 @@ class EtapeCapture {
 /// Seuils de qualité. Valeurs de départ, à ajuster avec le mode débogage.
 class SeuilsCapture {
   const SeuilsCapture({
-    this.dpiMin = 380,
-    this.dpiMax = 800,
+    this.dpiMin = 450,
+    this.dpiMax = 620,
+    this.dpiMinPouce = 380,
+    this.dpiMaxPouce = 850,
+    this.inclinaisonMax = 1.5,
+    this.angleMaxDegres = 25,
     this.largeurDoigtMm = 18,
     this.margeCadre = 0.03,
     this.ecartementMin = 0.9,
@@ -68,8 +72,21 @@ class SeuilsCapture {
     this.netteteApercuMin = 0,
     this.dureeStabilite = const Duration(milliseconds: 500),
     this.seuilNettete = 0.04,
-    this.platitudeMax = 0,
+    this.platitudeMax = 1.5,
   });
+
+  /// Pouces : fenêtre large. Un pouce est plus large que les 18 mm supposés,
+  /// d'où une résolution estimée plus haute (constaté : 600 à 810 dpi).
+  final double dpiMinPouce;
+  final double dpiMaxPouce;
+
+  /// Main penchée en avant ou en arrière : écart de profondeur entre les bouts
+  /// des doigts et leur base, en largeurs de doigt. Valeur de départ tolérante,
+  /// à calibrer avec les mesures enregistrées dans le JSON des captures.
+  final double inclinaisonMax;
+
+  /// Doigts vers le haut : écart maximal de l'axe du majeur avec la verticale.
+  final double angleMaxDegres;
 
   /// Netteté des crêtes minimale (0..1) d'une découpe pleine résolution pour
   /// l'accepter. Calibrage du 01/10/2026 (S23 Ultra, 28 découpes, 9 examinées
@@ -80,11 +97,14 @@ class SeuilsCapture {
   final double seuilNettete;
 
   /// Écart de profondeur maximal entre les bouts des 4 doigts, en largeurs de
-  /// doigt (« main bien à plat »). 0 = désactivé tant qu'il n'est pas calibré.
+  /// doigt (« main bien à plat »). Valeur de départ tolérante, à calibrer.
+  /// 0 = contrôle désactivé.
   final double platitudeMax;
 
   /// Résolution estimée de la future photo (doigt supposé large de [largeurDoigtMm]).
-  /// Trop basse = trop loin ; trop haute = trop près pour la mise au point.
+  /// Fenêtre resserrée (levier 2, phase 4) : SourceAFIS perd la correspondance
+  /// dès ~10 % d'écart d'échelle ; 450-620 ≈ ±15 % autour de 530, ce que
+  /// couvre la comparaison multi-échelle.
   final double dpiMin;
   final double dpiMax;
   final double largeurDoigtMm;
@@ -117,6 +137,8 @@ enum CodeGuidage {
   mauvaiseMain,
   tournerPaume,
   aplatir,
+  incliner,
+  redresser,
   horsCadre,
   rapprocher,
   eloigner,
@@ -149,11 +171,30 @@ class Guidage {
     this.dpi,
     this.progression = 0,
     this.platitude,
+    this.inclinaison,
+    this.angle,
   });
 
   /// Écart de profondeur entre les bouts des doigts, en largeurs de doigt
   /// (0 = main parfaitement à plat). Null si non mesurable.
   final double? platitude;
+
+  /// Profondeur des bouts des doigts moins celle de leur base, en largeurs de
+  /// doigt (négatif = bouts plus proches du téléphone). Null si non mesurable.
+  final double? inclinaison;
+
+  /// Angle de l'axe du majeur avec la verticale, en degrés.
+  final double? angle;
+
+  /// Mesures de pose au moment du déclenchement, enregistrées dans le JSON
+  /// de débogage pour calibrer les seuils.
+  Map<String, Object?> versContexte() => {
+        'code': code.name,
+        'dpi': dpi,
+        'platitude': platitude,
+        'inclinaison': inclinaison,
+        'angle': angle,
+      };
 
   final CodeGuidage code;
   final String message;
@@ -209,6 +250,9 @@ class EvaluateurCapture {
     ];
     // dpi = largeur du doigt sur la photo (px) / largeur du doigt (pouces).
     final pxParMm = 25.4 / seuils.largeurDoigtMm; // facteur : px de photo → dpi
+    final pouce = etape.type == TypeEtape.pouce;
+    final dpiMin = pouce ? seuils.dpiMinPouce : seuils.dpiMin;
+    final dpiMax = pouce ? seuils.dpiMaxPouce : seuils.dpiMax;
     final etats = <EtatDoigt>[];
     var horsCadre = false;
     for (final d in etape.doigts) {
@@ -222,8 +266,8 @@ class EvaluateurCapture {
         dpi: dpi,
         mesures: mesures,
         ok: dansCadre &&
-            dpi >= seuils.dpiMin &&
-            dpi <= seuils.dpiMax &&
+            dpi >= dpiMin &&
+            dpi <= dpiMax &&
             (mesures == null || _lumiereOk(mesures)),
       ));
     }
@@ -235,15 +279,21 @@ class EvaluateurCapture {
     final mouvement = _mouvement(bouts, largeurMoyenne);
     _boutsPrecedents = bouts;
     final platitude = _platitude(main, etape, a.largeur.toDouble(), largeurMoyenne);
+    final inclinaison = _inclinaison(main, etape, a.largeur.toDouble(), largeurMoyenne);
+    final angle = etape.type == TypeEtape.quatreDoigts ? _angle(points) : null;
 
     CodeGuidage? probleme;
     if (seuils.platitudeMax > 0 && platitude != null && platitude > seuils.platitudeMax) {
       probleme = CodeGuidage.aplatir;
+    } else if (seuils.inclinaisonMax > 0 && inclinaison != null && inclinaison.abs() > seuils.inclinaisonMax) {
+      probleme = CodeGuidage.incliner;
+    } else if (angle != null && angle.abs() > seuils.angleMaxDegres) {
+      probleme = CodeGuidage.redresser;
     } else if (horsCadre) {
       probleme = CodeGuidage.horsCadre;
-    } else if (dpiMoyen < seuils.dpiMin) {
+    } else if (dpiMoyen < dpiMin) {
       probleme = CodeGuidage.rapprocher;
-    } else if (dpiMoyen > seuils.dpiMax) {
+    } else if (dpiMoyen > dpiMax) {
       probleme = CodeGuidage.eloigner;
     } else if (etape.type == TypeEtape.quatreDoigts && !_ecartes(bouts, largeurMoyenne)) {
       probleme = CodeGuidage.ecarterDoigts;
@@ -261,6 +311,8 @@ class EvaluateurCapture {
         doigts: etats,
         dpi: dpiMoyen,
         platitude: platitude,
+        inclinaison: inclinaison,
+        angle: angle,
       );
     }
 
@@ -279,7 +331,29 @@ class EvaluateurCapture {
       dpi: dpiMoyen,
       progression: progression,
       platitude: platitude,
+      inclinaison: inclinaison,
+      angle: angle,
     );
+  }
+
+  /// Profondeur moyenne des 4 bouts moins celle des 4 bases (MediaPipe z,
+  /// échelle ≈ largeur de l'image), en largeurs de doigt.
+  double? _inclinaison(MainDetectee main, EtapeCapture etape, double largeurImage, double largeurDoigt) {
+    if (etape.type != TypeEtape.quatreDoigts || main.profondeurs.length < 21 || largeurDoigt <= 0) {
+      return null;
+    }
+    double moyenne(List<int> indices) =>
+        indices.map((i) => main.profondeurs[i]).reduce((x, y) => x + y) / indices.length;
+    const bases = [5, 9, 13, 17];
+    final bouts = [for (final d in etape.doigts) Reperes.bouts[d]];
+    return (moyenne(bouts) - moyenne(bases)) * largeurImage / largeurDoigt;
+  }
+
+  /// Angle (degrés) de l'axe base du majeur → bout du majeur avec la verticale
+  /// (0 = doigts vers le haut ; positif = penchés vers la droite de l'image).
+  double _angle(List<Offset> points) {
+    final axe = points[12] - points[9];
+    return math.atan2(axe.dx, -axe.dy) * 180 / math.pi;
   }
 
   /// Écart de profondeur (MediaPipe z, échelle ≈ largeur de l'image) entre le
@@ -369,6 +443,8 @@ class EvaluateurCapture {
     CodeGuidage.mauvaiseMain: "Ce n'est pas la bonne main.",
     CodeGuidage.tournerPaume: 'Tournez la paume vers la caméra.',
     CodeGuidage.aplatir: 'Tenez la main bien à plat, face au téléphone.',
+    CodeGuidage.incliner: 'Gardez la main parallèle au téléphone, ni penchée en avant ni en arrière.',
+    CodeGuidage.redresser: 'Doigts vers le haut, main bien droite.',
     CodeGuidage.horsCadre: 'Gardez les doigts dans le cadre.',
     CodeGuidage.rapprocher: 'Rapprochez la main.',
     CodeGuidage.eloigner: 'Éloignez un peu la main.',

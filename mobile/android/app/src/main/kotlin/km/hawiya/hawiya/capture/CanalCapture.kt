@@ -112,6 +112,7 @@ class CanalCapture(
                         debogage = call.argument<Boolean>("debogage") ?: false,
                         session = session,
                         seuilNettete = call.argument<Double>("seuilNettete") ?: 0.0,
+                        contexte = call.argument<Map<String, Any?>>("contexte") ?: emptyMap(),
                     ),
                     apercu,
                     if (x != null && y != null) Pair(x.toFloat(), y.toFloat()) else null,

@@ -38,6 +38,8 @@ data class ParametresCapture(
     val session: String,
     /** Netteté des crêtes minimale (QualiteCretes, 0..1) pour accepter un doigt. */
     val seuilNettete: Double,
+    /** Mesures de pose au déclenchement (guidage Flutter), recopiées dans le JSON. */
+    val contexte: Map<String, Any?> = emptyMap(),
 )
 
 /**
@@ -200,6 +202,7 @@ class CaptureRafale(
         etat.derniersPoints = main.points
         journal.put("cote", main.cote)
         journal.put("points", JSONArray(main.points.map { it.toDouble() }))
+        journal.put("profondeurs", JSONArray(main.profondeurs.map { it.toDouble() }))
         val mesuresDoigts = JSONArray()
 
         for (doigt in p.doigts) {
@@ -413,6 +416,7 @@ class CaptureRafale(
             put("main", p.main)
             put("doigts", JSONArray(p.doigts))
             put("horodatage", System.currentTimeMillis())
+            put("guidage", JSONObject(p.contexte))
             reponse.forEach { (cle, valeur) ->
                 put(
                     cle,

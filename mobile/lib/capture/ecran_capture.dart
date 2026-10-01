@@ -198,6 +198,7 @@ class _EcranCaptureState extends State<EcranCapture> {
         debogage: _debogage,
         seuilNettete: _evaluateur.seuils.seuilNettete,
         miseAuPoint: _pointMiseAuPoint(a, g.main!),
+        contexte: g.versContexte(),
       );
     } catch (e) {
       resultat = ResultatCapture(succes: false, raison: 'Capture impossible : $e');
@@ -494,9 +495,12 @@ class _EcranCaptureState extends State<EcranCapture> {
   Widget _jaugeDistance() {
     final dpi = _guidage?.dpi;
     final s = _evaluateur.seuils;
+    final pouce = _etape.type == TypeEtape.pouce;
+    final dpiMin = pouce ? s.dpiMinPouce : s.dpiMin;
+    final dpiMax = pouce ? s.dpiMaxPouce : s.dpiMax;
     // Échelle affichée : de 60 % du minimum à 130 % du maximum.
-    final bas = s.dpiMin * 0.6;
-    final haut = s.dpiMax * 1.3;
+    final bas = dpiMin * 0.6;
+    final haut = dpiMax * 1.3;
     double pos(double v) => ((v - bas) / (haut - bas)).clamp(0.0, 1.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -526,8 +530,8 @@ class _EcranCaptureState extends State<EcranCapture> {
               ),
               // Zone correcte
               Positioned(
-                left: w * pos(s.dpiMin),
-                width: w * (pos(s.dpiMax) - pos(s.dpiMin)),
+                left: w * pos(dpiMin),
+                width: w * (pos(dpiMax) - pos(dpiMin)),
                 top: 4,
                 bottom: 4,
                 child: Container(color: Couleurs.validation.withValues(alpha: 0.45)),
@@ -595,7 +599,9 @@ class _EcranCaptureState extends State<EcranCapture> {
         _ => 'CHAUD (${a!.thermique})',
       }),
       ('Guidage', g?.code.name ?? '—'),
-      ('Main à plat', g?.platitude == null ? '—' : '${g!.platitude!.toStringAsFixed(2)} largeur(s) de doigt'),
+      ('Main à plat', g?.platitude == null ? '—' : '${g!.platitude!.toStringAsFixed(2)} (max ${_evaluateur.seuils.platitudeMax})'),
+      ('Inclinaison', g?.inclinaison == null ? '—' : '${g!.inclinaison!.toStringAsFixed(2)} (max ±${_evaluateur.seuils.inclinaisonMax})'),
+      ('Angle doigts', g?.angle == null ? '—' : '${g!.angle!.toStringAsFixed(0)}° (max ±${_evaluateur.seuils.angleMaxDegres.toStringAsFixed(0)}°)'),
       ('Seuil netteté', _evaluateur.seuils.seuilNettete.toStringAsFixed(3)),
       ('Session', _session),
     ];

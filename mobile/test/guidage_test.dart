@@ -51,7 +51,7 @@ void main() {
   final t0 = DateTime(2026, 10, 1, 12);
   // Photo 3000 px de large pour 480 analysés : facteur 6,25.
   // Doigt de 40 px analysés → 250 px de photo → ≈ 353 dpi (trop loin).
-  // Doigt de 50 px → 312,5 px → ≈ 441 dpi (bon).
+  // Doigt de 55 px → 343,75 px → ≈ 485 dpi (dans la fenêtre 450-620).
   const facteur = 6.25;
 
   Guidage evaluer(EvaluateurCapture e, MainDetectee? main, DateTime t) => e.evaluer(
@@ -85,32 +85,32 @@ void main() {
   });
 
   test('doigts serrés', () {
-    final g = evaluer(EvaluateurCapture(), mainSynthetique(phalange: 50, ecart: 40), t0);
+    final g = evaluer(EvaluateurCapture(), mainSynthetique(phalange: 55, ecart: 40), t0);
     expect(g.code, CodeGuidage.ecarterDoigts);
   });
 
   test('hors du cadre', () {
     final g = evaluer(EvaluateurCapture(),
-        mainSynthetique(phalange: 50, decalage: const Offset(160, 0)), t0);
+        mainSynthetique(phalange: 55, decalage: const Offset(160, 0)), t0);
     expect(g.code, CodeGuidage.horsCadre);
   });
 
   test('lumière : sombre et reflet', () {
-    expect(evaluer(EvaluateurCapture(), mainSynthetique(phalange: 50, luminance: 20), t0).code,
+    expect(evaluer(EvaluateurCapture(), mainSynthetique(phalange: 55, luminance: 20), t0).code,
         CodeGuidage.tropSombre);
     expect(
-        evaluer(EvaluateurCapture(), mainSynthetique(phalange: 50, eblouissement: 0.4), t0).code,
+        evaluer(EvaluateurCapture(), mainSynthetique(phalange: 55, eblouissement: 0.4), t0).code,
         CodeGuidage.reflet);
   });
 
   test('déclenchement seulement après 0,5 s d\'immobilité', () {
     final e = EvaluateurCapture();
-    final main = mainSynthetique(phalange: 50);
+    final main = mainSynthetique(phalange: 55);
     // 1re image : pas encore de preuve d'immobilité.
     expect(evaluer(e, main, t0).code, CodeGuidage.bouger);
     final g1 = evaluer(e, main, t0.add(const Duration(milliseconds: 120)));
     expect(g1.code, CodeGuidage.immobile);
-    expect(g1.dpi, closeTo(441, 1));
+    expect(g1.dpi, closeTo(485, 1));
     expect(g1.doigts.every((d) => d.ok), isTrue);
     expect(evaluer(e, main, t0.add(const Duration(milliseconds: 400))).code,
         CodeGuidage.immobile);
@@ -119,22 +119,22 @@ void main() {
 
   test('un mouvement remet le compteur à zéro', () {
     final e = EvaluateurCapture();
-    evaluer(e, mainSynthetique(phalange: 50), t0);
-    evaluer(e, mainSynthetique(phalange: 50), t0.add(const Duration(milliseconds: 100)));
-    // La main se déplace de 20 px (> 15 % de la largeur d'un doigt de 50 px).
-    final g = evaluer(e, mainSynthetique(phalange: 50, decalage: const Offset(20, 0)),
+    evaluer(e, mainSynthetique(phalange: 55), t0);
+    evaluer(e, mainSynthetique(phalange: 55), t0.add(const Duration(milliseconds: 100)));
+    // La main se déplace de 20 px (> 15 % de la largeur d'un doigt de 55 px).
+    final g = evaluer(e, mainSynthetique(phalange: 55, decalage: const Offset(20, 0)),
         t0.add(const Duration(milliseconds: 700)));
     expect(g.code, CodeGuidage.bouger);
     expect(
-        evaluer(e, mainSynthetique(phalange: 50, decalage: const Offset(20, 0)),
+        evaluer(e, mainSynthetique(phalange: 55, decalage: const Offset(20, 0)),
                 t0.add(const Duration(milliseconds: 800)))
             .pret,
         isFalse);
   });
 
-  test('main penchée : « tenez la main à plat » (si le contrôle est activé)', () {
+  test('auriculaire plus loin : « tenez la main à plat »', () {
     MainDetectee penchee() {
-      final m = mainSynthetique(phalange: 50);
+      final m = mainSynthetique(phalange: 55);
       // Auriculaire (bout 20) 0,2 largeur d'image plus loin que les autres bouts.
       final z = List<double>.filled(21, 0)..[20] = 0.2;
       return MainDetectee(
@@ -142,20 +142,68 @@ void main() {
           doigts: m.doigts, profondeurs: z);
     }
 
-    final sansControle = evaluer(EvaluateurCapture(), penchee(), t0);
+    final sansControle = evaluer(EvaluateurCapture(seuils: const SeuilsCapture(platitudeMax: 0)), penchee(), t0);
     expect(sansControle.code, isNot(CodeGuidage.aplatir));
-    // 0,2 × 480 px = 96 px de profondeur pour des doigts de 50 px → 1,9 largeur.
-    expect(sansControle.platitude, closeTo(1.92, 0.01));
+    // 0,2 × 480 px = 96 px de profondeur pour des doigts de 55 px → 1,75 largeur.
+    expect(sansControle.platitude, closeTo(1.745, 0.01));
 
-    final avecControle = EvaluateurCapture(seuils: const SeuilsCapture(platitudeMax: 1.0));
+    // Contrôle actif par défaut (seuil 1,5).
+    final avecControle = EvaluateurCapture();
     expect(evaluer(avecControle, penchee(), t0).code, CodeGuidage.aplatir);
+  });
+
+  MainDetectee avecProfondeurs(MainDetectee m, List<double> z) => MainDetectee(
+      cote: m.cote, confiance: m.confiance, points: m.points, paume: m.paume,
+      doigts: m.doigts, profondeurs: z);
+
+  test('main penchée en avant : « gardez la main parallèle »', () {
+    // Les 4 bouts 0,2 largeur d'image plus près que leur base → −1,75 largeur de doigt.
+    final z = List<double>.filled(21, 0);
+    for (final b in [8, 12, 16, 20]) {
+      z[b] = -0.2;
+    }
+    final g = evaluer(EvaluateurCapture(), avecProfondeurs(mainSynthetique(phalange: 55), z), t0);
+    expect(g.inclinaison, closeTo(-1.745, 0.01));
+    expect(g.platitude, closeTo(0, 1e-9));
+    expect(g.code, CodeGuidage.incliner);
+  });
+
+  test('main droite, doigts vers le haut : pas d\'alerte d\'inclinaison ni d\'angle', () {
+    final g = evaluer(EvaluateurCapture(), avecProfondeurs(mainSynthetique(phalange: 55), List.filled(21, 0)), t0);
+    expect(g.inclinaison, closeTo(0, 1e-9));
+    expect(g.angle!.abs(), lessThan(10));
+    expect(g.code, isNot(anyOf(CodeGuidage.incliner, CodeGuidage.redresser, CodeGuidage.aplatir)));
+  });
+
+  test('main de travers : « doigts vers le haut »', () {
+    final m = mainSynthetique(phalange: 55);
+    // Base du majeur déplacée : axe base → bout du majeur penché d'environ 40°.
+    final points = [...m.points];
+    points[9] = Offset((205 - 0.84 * 315) / 480, 560 / 640);
+    final g = evaluer(EvaluateurCapture(),
+        MainDetectee(cote: m.cote, confiance: m.confiance, points: points, paume: m.paume, doigts: m.doigts), t0);
+    expect(g.angle, closeTo(40, 1));
+    expect(g.code, CodeGuidage.redresser);
+  });
+
+  test('étape pouce : fenêtre de distance plus large', () {
+    // Le pouce synthétique mesure √(20² + 40²) ≈ 44,7 px → ≈ 394 dpi :
+    // trop loin pour une main (fenêtre 450-620), accepté pour un pouce (380-850).
+    final pouce = EvaluateurCapture().evaluer(
+        analyseAvec([mainSynthetique(phalange: 55)]), EtapeCapture.sequence[2],
+        facteurCapture: facteur, maintenant: t0);
+    expect(pouce.dpi, closeTo(394, 1));
+    expect(pouce.code, isNot(anyOf(CodeGuidage.rapprocher, CodeGuidage.eloigner)));
+    final main = evaluer(EvaluateurCapture(), mainSynthetique(phalange: 44.7), t0);
+    expect(main.dpi, closeTo(394, 1));
+    expect(main.code, CodeGuidage.rapprocher);
   });
 
   test('étape pouce : un seul doigt, pas de contrôle de paume ni d\'écartement', () {
     final e = EvaluateurCapture();
     final etape = EtapeCapture.sequence[2];
     expect(etape.doigts, [0]);
-    final main = mainSynthetique(paume: false, ecart: 10, phalange: 50);
+    final main = mainSynthetique(paume: false, ecart: 10, phalange: 55);
     final g = e.evaluer(analyseAvec([main]), etape, facteurCapture: facteur, maintenant: t0);
     expect(g.code, isNot(CodeGuidage.tournerPaume));
     expect(g.code, isNot(CodeGuidage.ecarterDoigts));
