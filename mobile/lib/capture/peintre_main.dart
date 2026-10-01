@@ -40,7 +40,7 @@ class PeintreMain extends CustomPainter {
     final paumeAttendueAbsente = guidage!.code == CodeGuidage.tournerPaume;
     final doigtsAffiches = etats.isEmpty ? [1, 2, 3, 4] : etats.keys;
     for (final d in doigtsAffiches) {
-      final zone = zoneEmpreinte(points[Reperes.bouts[d]], points[Reperes.articulations[d]]);
+      final zone = zoneDuDoigt(points, d);
       final couleur = paumeAttendueAbsente
           ? Couleurs.alerte
           : (etats[d]?.ok ?? false)

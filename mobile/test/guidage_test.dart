@@ -132,6 +132,25 @@ void main() {
         isFalse);
   });
 
+  test('main penchée : « tenez la main à plat » (si le contrôle est activé)', () {
+    MainDetectee penchee() {
+      final m = mainSynthetique(phalange: 50);
+      // Auriculaire (bout 20) 0,2 largeur d'image plus loin que les autres bouts.
+      final z = List<double>.filled(21, 0)..[20] = 0.2;
+      return MainDetectee(
+          cote: m.cote, confiance: m.confiance, points: m.points, paume: m.paume,
+          doigts: m.doigts, profondeurs: z);
+    }
+
+    final sansControle = evaluer(EvaluateurCapture(), penchee(), t0);
+    expect(sansControle.code, isNot(CodeGuidage.aplatir));
+    // 0,2 × 480 px = 96 px de profondeur pour des doigts de 50 px → 1,9 largeur.
+    expect(sansControle.platitude, closeTo(1.92, 0.01));
+
+    final avecControle = EvaluateurCapture(seuils: const SeuilsCapture(platitudeMax: 1.0));
+    expect(evaluer(avecControle, penchee(), t0).code, CodeGuidage.aplatir);
+  });
+
   test('étape pouce : un seul doigt, pas de contrôle de paume ni d\'écartement', () {
     final e = EvaluateurCapture();
     final etape = EtapeCapture.sequence[2];

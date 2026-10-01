@@ -59,6 +59,9 @@ class MoteurCapture(
 
         /** Attente maximale de la mise au point avant la rafale. */
         const val DELAI_MISE_AU_POINT_MS = 1500L
+
+        /** Rafales ciblées sur les doigts restés flous, après la première. */
+        const val RAFALES_SUPPLEMENTAIRES = 2
     }
 
     private val executeurAnalyse: ExecutorService = Executors.newSingleThreadExecutor()
@@ -312,8 +315,11 @@ class MoteurCapture(
     // ------------------------------------------------------------------ capture
 
     /**
-     * Verrouille la mise au point sur [point] (coordonnées 0..1 de l'aperçu), puis
-     * lance la rafale. [reponse] est appelée sur le fil principal.
+     * Capture d'une étape : rafale avec la mise au point sur [point] (coordonnées
+     * 0..1 de l'aperçu), puis, si des doigts restent flous, jusqu'à
+     * [RAFALES_SUPPLEMENTAIRES] rafales avec la mise au point SUR CES DOIGTS
+     * (typiquement l'auriculaire, plus loin que les autres).
+     * [reponse] est appelée sur le fil principal.
      */
     fun capturer(
         p: ParametresCapture,
@@ -332,18 +338,57 @@ class MoteurCapture(
             repondre(mapOf("succes" to false, "raison" to "Capture déjà en cours"))
             return
         }
+        val etat = rafale.nouvelEtat(p)
 
-        val lancee = AtomicBoolean(false)
-        val lancer = Runnable {
-            if (!lancee.compareAndSet(false, true)) return@Runnable
-            rafale.capturer(capture, p) { resultat ->
-                cam.cameraControl.cancelFocusAndMetering()
-                captureEnCours.set(false)
-                repondre(resultat)
-            }
+        fun terminer(resultat: Map<String, Any?>) {
+            cam.cameraControl.cancelFocusAndMetering()
+            captureEnCours.set(false)
+            repondre(resultat)
         }
 
-        if (apercu != null && point != null && apercu.width > 0 && apercu.height > 0) {
+        fun lancerRafale(cible: Pair<Float, Float>?) {
+            mettreAuPointPuis(cam, apercu, cible) {
+                rafale.rafale(capture, etat, cible) { erreur ->
+                    if (erreur != null) {
+                        rafale.finaliser(etat) // libère les découpes déjà faites
+                        terminer(mapOf("succes" to false, "raison" to erreur))
+                        return@rafale
+                    }
+                    val aRefaire = etat.doigtsARefaire()
+                    val points = etat.derniersPoints
+                    if (aRefaire.isNotEmpty() && points != null && etat.rafales <= RAFALES_SUPPLEMENTAIRES) {
+                        // Mise au point au centre des bouts des doigts encore flous.
+                        val xs = aRefaire.map { points[2 * Zone.BOUTS[it]] }
+                        val ys = aRefaire.map { points[2 * Zone.BOUTS[it] + 1] }
+                        lancerRafale(Pair(xs.average().toFloat(), ys.average().toFloat()))
+                    } else {
+                        terminer(rafale.finaliser(etat))
+                    }
+                }
+            }
+        }
+        lancerRafale(point)
+    }
+
+    /**
+     * Verrouille mise au point + exposition sur [point], puis exécute [suite] sur le
+     * fil de capture (même si la mise au point échoue ou tarde).
+     *
+     * Les points des photos et de l'aperçu sont dans le même repère : même format
+     * 4:3 et aperçu affiché en entier (FIT_CENTER) dans une zone 3:4.
+     */
+    private fun mettreAuPointPuis(cam: Camera, apercu: PreviewView?, point: Pair<Float, Float>?, suite: () -> Unit) {
+        val lancee = AtomicBoolean(false)
+        val lancer = Runnable { if (lancee.compareAndSet(false, true)) suite() }
+        if (apercu == null || point == null) {
+            executeurCapture.execute(lancer)
+            return
+        }
+        principal.post {
+            if (apercu.width == 0 || apercu.height == 0) {
+                executeurCapture.execute(lancer)
+                return@post
+            }
             val mesure = apercu.meteringPointFactory.createPoint(point.first * apercu.width, point.second * apercu.height)
             val action = FocusMeteringAction.Builder(
                 mesure, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE,
@@ -351,8 +396,6 @@ class MoteurCapture(
             cam.cameraControl.startFocusAndMetering(action).addListener(lancer, executeurCapture)
             // Si la mise au point tarde, on photographie quand même.
             principal.postDelayed({ executeurCapture.execute(lancer) }, DELAI_MISE_AU_POINT_MS)
-        } else {
-            executeurCapture.execute(lancer)
         }
     }
 

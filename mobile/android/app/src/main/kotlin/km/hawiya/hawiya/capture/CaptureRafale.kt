@@ -14,6 +14,7 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import km.hawiya.hawiya.qualite.ImageGris
 import km.hawiya.hawiya.qualite.Mesures
+import km.hawiya.hawiya.qualite.QualiteCretes
 import km.hawiya.hawiya.qualite.Zone
 import org.json.JSONArray
 import org.json.JSONObject
@@ -31,18 +32,21 @@ data class ParametresCapture(
     val main: String,
     /** Doigts MediaPipe : 0 = pouce, 1 = index … 4 = auriculaire. */
     val doigts: List<Int>,
-    /** Mode débogage : garde aussi les photos complètes et les découpes dans captures/. */
+    /** Mode débogage : garde aussi les photos complètes, les découpes et un JSON détaillé. */
     val debogage: Boolean,
     /** Identifiant de la session (nom du dossier). */
     val session: String,
+    /** Netteté des crêtes minimale (QualiteCretes, 0..1) pour accepter un doigt. */
+    val seuilNettete: Double,
 )
 
 /**
- * Rafale de photos pleine résolution, puis découpe redressée de chaque bout de doigt.
+ * Rafales de photos pleine résolution, puis découpe redressée de chaque bout de doigt.
  *
  * Pour chaque photo : nouvelle détection de la main SUR LA PHOTO (elle a pu bouger
  * depuis l'image d'analyse), découpe de chaque doigt, mesure de la netteté des
- * crêtes. On garde la découpe la plus nette de chaque doigt.
+ * crêtes. On garde la découpe la plus nette de chaque doigt, sur toutes les
+ * rafales d'une même capture (voir MoteurCapture : rafale ciblée sur les doigts flous).
  *
  * Tout se passe sur [executeur] (un seul fil : exigence du détecteur MediaPipe).
  */
@@ -65,106 +69,182 @@ class CaptureRafale(
         val NOMS_DOIGTS = listOf("pouce", "index", "majeur", "annulaire", "auriculaire")
     }
 
-    private class PhotoBrute(val octets: ByteArray, val rotation: Int)
-
-    private class Decoupe(
+    internal class Decoupe(
         val doigt: Int,
         val image: Bitmap,
-        val nettete: Double,
+        /** Netteté des crêtes, 0..1 (QualiteCretes). */
+        val score: Double,
+        /** Ancienne mesure, gardée pour comparaison. */
+        val laplacien: Double,
         val luminance: Double,
         val eblouissement: Double,
         val largeurDoigtPx: Float,
+        val dpi: Double,
+        val rafale: Int,
         val photo: Int,
     )
 
+    /** Ce qui s'accumule pendant une capture (une ou plusieurs rafales). */
+    inner class EtatCapture(val p: ParametresCapture) {
+        internal val meilleures = HashMap<Int, Decoupe>()
+        internal val journalPhotos = JSONArray()
+        val debut = SystemClock.uptimeMillis()
+        var rafales = 0
+            internal set
+        internal var photosTotal = 0
+        internal var photosSansMain = 0
+        internal var dureePhotosMs = 0L
+        internal var resolution = ""
+
+        /** Points (normalisés) de la main sur la dernière photo où elle a été trouvée. */
+        var derniersPoints: FloatArray? = null
+            internal set
+
+        /** Doigts absents ou sous le seuil de netteté. */
+        fun doigtsARefaire(): List<Int> =
+            p.doigts.filter { (meilleures[it]?.score ?: -1.0) < p.seuilNettete }
+    }
+
     private var detecteur: DetecteurMain? = null
 
-    /** Lance la rafale ; [reponse] est appelée sur le fil [executeur]. */
-    fun capturer(photo: ImageCapture, p: ParametresCapture, reponse: (Map<String, Any?>) -> Unit) {
+    fun nouvelEtat(p: ParametresCapture) = EtatCapture(p)
+
+    /**
+     * Une rafale de [NB_PHOTOS] photos, traitées et ajoutées à [etat].
+     * [fin] est appelée sur le fil [executeur] (avec l'erreur éventuelle).
+     */
+    fun rafale(
+        photo: ImageCapture,
+        etat: EtatCapture,
+        pointMiseAuPoint: Pair<Float, Float>?,
+        fin: (String?) -> Unit,
+    ) {
+        etat.rafales++
+        val numeroRafale = etat.rafales
         val debut = SystemClock.uptimeMillis()
-        val photos = mutableListOf<PhotoBrute>()
-        // Les photos s'enchaînent le plus vite possible ; le traitement vient après.
+        val brutes = mutableListOf<Pair<ByteArray, Int>>()
         fun suivante() {
             photo.takePicture(executeur, object : ImageCapture.OnImageCapturedCallback() {
                 override fun onCaptureSuccess(image: ImageProxy) {
                     try {
-                        photos += PhotoBrute(octetsJpeg(image), image.imageInfo.rotationDegrees)
+                        brutes += Pair(octetsJpeg(image), image.imageInfo.rotationDegrees)
                     } finally {
                         image.close()
                     }
-                    if (photos.size < NB_PHOTOS) {
+                    if (brutes.size < NB_PHOTOS) {
                         suivante()
-                    } else {
-                        val dureePhotos = SystemClock.uptimeMillis() - debut
-                        reponse(traiterEnSecurite(photos, p, debut, dureePhotos))
+                        return
                     }
+                    etat.dureePhotosMs += SystemClock.uptimeMillis() - debut
+                    val erreur = try {
+                        brutes.forEachIndexed { k, (octets, rotation) ->
+                            traiterPhoto(etat, numeroRafale, k + 1, octets, rotation, pointMiseAuPoint)
+                        }
+                        null
+                    } catch (e: OutOfMemoryError) {
+                        "Mémoire insuffisante pour traiter les photos"
+                    } catch (e: Throwable) {
+                        "Traitement des photos : ${e.message}"
+                    }
+                    fin(erreur)
                 }
 
                 override fun onError(exception: ImageCaptureException) {
-                    reponse(echec("Photo impossible : ${exception.message}"))
+                    fin("Photo impossible : ${exception.message}")
                 }
             })
         }
         suivante()
     }
 
-    private fun traiterEnSecurite(
-        photos: List<PhotoBrute>, p: ParametresCapture, debut: Long, dureePhotos: Long,
-    ): Map<String, Any?> = try {
-        traiter(photos, p, debut, dureePhotos)
-    } catch (e: OutOfMemoryError) {
-        echec("Mémoire insuffisante pour traiter les photos")
-    } catch (e: Throwable) {
-        echec("Traitement des photos : ${e.message}")
-    }
-
-    private fun traiter(
-        photos: List<PhotoBrute>, p: ParametresCapture, debut: Long, dureePhotos: Long,
-    ): Map<String, Any?> {
+    private fun traiterPhoto(
+        etat: EtatCapture,
+        numeroRafale: Int,
+        numeroPhoto: Int,
+        octets: ByteArray,
+        rotation: Int,
+        pointMiseAuPoint: Pair<Float, Float>?,
+    ) {
+        val p = etat.p
         val det = detecteur ?: DetecteurMain(context, video = false).also { detecteur = it }
         val dossier = dossierSortie(p)
-        val meilleures = HashMap<Int, Decoupe>()
-        var resolution = ""
-        var photosSansMain = 0
-
-        for ((k, brute) in photos.withIndex()) {
-            if (p.debogage) File(dossier, "${p.main}_${typeEtape(p)}_photo${k + 1}.jpg").writeBytes(brute.octets)
-            val image = decoder(brute)
-            resolution = "${image.width}×${image.height}"
-
-            val main = choisirMain(det, image, p.main)
-            if (main == null) {
-                photosSansMain++
-                image.recycle()
-                continue
-            }
-            for (doigt in p.doigts) {
-                val zone = Zone.pourDoigt(main.points, doigt, image.width, image.height, AGRANDISSEMENT)
-                if (!zone.dansImage(image.width, image.height)) continue
-                val decoupe = decouper(image, zone)
-                val centre = Mesures.centre(versGris(decoupe))
-                val candidate = Decoupe(
-                    doigt = doigt,
-                    image = decoupe,
-                    nettete = Mesures.varianceLaplacien(Mesures.flou3x3(centre)),
-                    luminance = Mesures.luminanceMoyenne(centre),
-                    eblouissement = Mesures.fractionEblouie(centre),
-                    largeurDoigtPx = zone.largeur / AGRANDISSEMENT,
-                    photo = k + 1,
-                )
-                val actuelle = meilleures[doigt]
-                if (actuelle == null || candidate.nettete > actuelle.nettete) {
-                    actuelle?.image?.recycle()
-                    meilleures[doigt] = candidate
-                } else {
-                    decoupe.recycle()
-                }
-            }
-            image.recycle()
+        etat.photosTotal++
+        if (p.debogage) {
+            File(dossier, "${p.main}_${typeEtape(p)}_r${numeroRafale}_photo$numeroPhoto.jpg").writeBytes(octets)
+        }
+        val image = decoder(octets, rotation)
+        etat.resolution = "${image.width}×${image.height}"
+        val journal = JSONObject().apply {
+            put("rafale", numeroRafale)
+            put("photo", numeroPhoto)
+            pointMiseAuPoint?.let { put("miseAuPoint", JSONArray(listOf(it.first.toDouble(), it.second.toDouble()))) }
         }
 
-        // Enregistrement des meilleures découpes (PNG, sans perte).
-        val resultats = meilleures.values.sortedBy { it.doigt }.map { d ->
+        val main = choisirMain(det, image, p.main)
+        if (main == null) {
+            etat.photosSansMain++
+            journal.put("main", JSONObject.NULL)
+            etat.journalPhotos.put(journal)
+            image.recycle()
+            return
+        }
+        etat.derniersPoints = main.points
+        journal.put("cote", main.cote)
+        journal.put("points", JSONArray(main.points.map { it.toDouble() }))
+        val mesuresDoigts = JSONArray()
+
+        for (doigt in p.doigts) {
+            val zone = Zone.pourDoigt(main.points, doigt, image.width, image.height, AGRANDISSEMENT)
+            if (!zone.dansImage(image.width, image.height)) {
+                mesuresDoigts.put(JSONObject().put("doigt", doigt).put("dansCadre", false))
+                continue
+            }
+            val decoupe = decouper(image, zone)
+            val centre = Mesures.centre(versGris(decoupe))
+            val largeurDoigt = zone.largeur / AGRANDISSEMENT
+            val dpi = (largeurDoigt / (LARGEUR_DOIGT_MM / 25.4f)).toDouble()
+            val cretes = QualiteCretes.evaluer(centre, dpi)
+            val candidate = Decoupe(
+                doigt = doigt,
+                image = decoupe,
+                score = cretes.score,
+                laplacien = Mesures.varianceLaplacien(Mesures.flou3x3(centre)),
+                luminance = Mesures.luminanceMoyenne(centre),
+                eblouissement = Mesures.fractionEblouie(centre),
+                largeurDoigtPx = largeurDoigt,
+                dpi = dpi,
+                rafale = numeroRafale,
+                photo = numeroPhoto,
+            )
+            mesuresDoigts.put(
+                JSONObject()
+                    .put("doigt", doigt)
+                    .put("dansCadre", true)
+                    .put("nettete", candidate.score)
+                    .put("partBlocsNets", cretes.partBlocsNets)
+                    .put("laplacien", candidate.laplacien)
+                    .put("luminance", candidate.luminance)
+                    .put("eblouissement", candidate.eblouissement)
+                    .put("dpi", dpi),
+            )
+            val actuelle = etat.meilleures[doigt]
+            if (actuelle == null || candidate.score > actuelle.score) {
+                actuelle?.image?.recycle()
+                etat.meilleures[doigt] = candidate
+            } else {
+                decoupe.recycle()
+            }
+        }
+        journal.put("doigts", mesuresDoigts)
+        etat.journalPhotos.put(journal)
+        image.recycle()
+    }
+
+    /** Enregistre les meilleures découpes et construit la réponse pour Flutter. */
+    fun finaliser(etat: EtatCapture): Map<String, Any?> {
+        val p = etat.p
+        val dossier = dossierSortie(p)
+        val resultats = etat.meilleures.values.sortedBy { it.doigt }.map { d ->
             val fichier = File(dossier, "${p.main}_${NOMS_DOIGTS[d.doigt]}_iso${iso(p.main, d.doigt)}.png")
             fichier.outputStream().use { d.image.compress(Bitmap.CompressFormat.PNG, 100, it) }
             val resultat = mapOf(
@@ -174,34 +254,46 @@ class CaptureRafale(
                 "chemin" to fichier.absolutePath,
                 "largeur" to d.image.width,
                 "hauteur" to d.image.height,
-                "nettete" to d.nettete,
+                "nettete" to d.score,
+                "netteteLaplacien" to d.laplacien,
+                "acceptee" to (d.score >= p.seuilNettete),
                 "luminance" to d.luminance,
                 "eblouissement" to d.eblouissement,
                 "largeurDoigtPx" to d.largeurDoigtPx.toDouble(),
-                "dpiEstime" to (d.largeurDoigtPx / (LARGEUR_DOIGT_MM / 25.4f)).toDouble(),
+                "dpiEstime" to d.dpi,
+                "rafale" to d.rafale,
                 "photo" to d.photo,
             )
             d.image.recycle()
             resultat
         }
+        etat.meilleures.clear()
 
-        val manquants = p.doigts.filter { it !in meilleures }
+        val absents = p.doigts.filter { d -> resultats.none { it["doigt"] == d } }
+        val flous = resultats.filter { it["acceptee"] == false }.map { it["doigt"] as Int }
         val reponse = mapOf(
-            "succes" to manquants.isEmpty(),
+            "succes" to (absents.isEmpty() && flous.isEmpty()),
             "raison" to when {
-                photosSansMain == photos.size -> "Main non retrouvée sur les photos : recommencez sans bouger."
-                manquants.isNotEmpty() -> "Doigt(s) hors du cadre sur les photos : " +
-                    manquants.joinToString { NOMS_DOIGTS[it] } + "."
+                etat.photosSansMain == etat.photosTotal ->
+                    "Main non retrouvée sur les photos : recommencez sans bouger."
+                absents.isNotEmpty() ->
+                    "Doigt(s) hors du cadre sur les photos : ${absents.joinToString { NOMS_DOIGTS[it] }}."
+                flous.isNotEmpty() ->
+                    "Doigt(s) flou(s) : ${flous.joinToString { NOMS_DOIGTS[it] }}. " +
+                        "Recommencez en tenant la main bien à plat, face au téléphone."
                 else -> null
             },
             "resultats" to resultats,
-            "resolution" to resolution,
-            "photosSansMain" to photosSansMain,
-            "dureePhotosMs" to dureePhotos.toInt(),
-            "dureeTotaleMs" to (SystemClock.uptimeMillis() - debut).toInt(),
+            "doigtsFlous" to flous,
+            "seuilNettete" to p.seuilNettete,
+            "rafales" to etat.rafales,
+            "resolution" to etat.resolution,
+            "photosSansMain" to etat.photosSansMain,
+            "dureePhotosMs" to etat.dureePhotosMs.toInt(),
+            "dureeTotaleMs" to (SystemClock.uptimeMillis() - etat.debut).toInt(),
             "dossier" to dossier.absolutePath,
         )
-        if (p.debogage) ecrireJson(dossier, p, reponse)
+        if (p.debogage) ecrireJson(dossier, etat, reponse)
         return reponse
     }
 
@@ -248,12 +340,12 @@ class CaptureRafale(
         return sortie
     }
 
-    private fun decoder(brute: PhotoBrute): Bitmap {
-        val image = BitmapFactory.decodeByteArray(brute.octets, 0, brute.octets.size)
-        if (brute.rotation == 0) return image
+    private fun decoder(octets: ByteArray, rotation: Int): Bitmap {
+        val image = BitmapFactory.decodeByteArray(octets, 0, octets.size)
+        if (rotation == 0) return image
         val droite = Bitmap.createBitmap(
             image, 0, 0, image.width, image.height,
-            Matrix().apply { postRotate(brute.rotation.toFloat()) }, true,
+            Matrix().apply { postRotate(rotation.toFloat()) }, true,
         )
         image.recycle()
         return droite
@@ -296,7 +388,8 @@ class CaptureRafale(
         File(context.cacheDir, "decoupes").deleteRecursively()
     }
 
-    private fun ecrireJson(dossier: File, p: ParametresCapture, reponse: Map<String, Any?>) {
+    private fun ecrireJson(dossier: File, etat: EtatCapture, reponse: Map<String, Any?>) {
+        val p = etat.p
         val json = JSONObject().apply {
             put("telephone", "${Build.MANUFACTURER} ${Build.MODEL}")
             put("android", Build.VERSION.RELEASE)
@@ -304,8 +397,19 @@ class CaptureRafale(
             put("doigts", JSONArray(p.doigts))
             put("horodatage", System.currentTimeMillis())
             reponse.forEach { (cle, valeur) ->
-                put(cle, if (valeur is List<*>) JSONArray(valeur.map { JSONObject(it as Map<*, *>) }) else valeur)
+                put(
+                    cle,
+                    when {
+                        valeur is List<*> && valeur.firstOrNull() is Map<*, *> ->
+                            JSONArray(valeur.map { JSONObject(it as Map<*, *>) })
+                        valeur is List<*> -> JSONArray(valeur)
+                        else -> valeur
+                    },
+                )
             }
+            // Détail de chaque photo (points de la main, mesures de tous les doigts)
+            // pour réanalyser les captures sur PC (phase 4).
+            put("photos", etat.journalPhotos)
         }
         File(dossier, "${p.main}_${typeEtape(p)}.json").writeText(json.toString(2))
     }
@@ -314,8 +418,6 @@ class CaptureRafale(
 
     /** Numérotation ISO/IEC 19794 : 1 = pouce droit … 5 = auriculaire droit, 6 = pouce gauche … 10. */
     private fun iso(main: String, doigt: Int) = (if (main == "droite") 1 else 6) + doigt
-
-    private fun echec(raison: String) = mapOf("succes" to false, "raison" to raison, "resultats" to emptyList<Any>())
 
     fun liberer() {
         detecteur?.close()

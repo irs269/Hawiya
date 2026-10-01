@@ -67,7 +67,19 @@ class SeuilsCapture {
     this.eblouissementMax = 0.10,
     this.netteteApercuMin = 0,
     this.dureeStabilite = const Duration(milliseconds: 500),
+    this.seuilNettete = 0.03,
+    this.platitudeMax = 0,
   });
+
+  /// Netteté des crêtes minimale (0..1) d'une découpe pleine résolution pour
+  /// l'accepter. Calibrage du 01/10/2026 (S23 Ultra, 28 découpes, 9 examinées
+  /// à l'œil) : la pire découpe acceptable vaut 0,040, la meilleure refusée
+  /// 0,024 → seuil 0,03. Provisoire : à revoir avec plus de captures.
+  final double seuilNettete;
+
+  /// Écart de profondeur maximal entre les bouts des 4 doigts, en largeurs de
+  /// doigt (« main bien à plat »). 0 = désactivé tant qu'il n'est pas calibré.
+  final double platitudeMax;
 
   /// Résolution estimée de la future photo (doigt supposé large de [largeurDoigtMm]).
   /// Trop basse = trop loin ; trop haute = trop près pour la mise au point.
@@ -102,6 +114,7 @@ enum CodeGuidage {
   aucuneMain,
   mauvaiseMain,
   tournerPaume,
+  aplatir,
   horsCadre,
   rapprocher,
   eloigner,
@@ -133,7 +146,12 @@ class Guidage {
     this.doigts = const [],
     this.dpi,
     this.progression = 0,
+    this.platitude,
   });
+
+  /// Écart de profondeur entre les bouts des doigts, en largeurs de doigt
+  /// (0 = main parfaitement à plat). Null si non mesurable.
+  final double? platitude;
 
   final CodeGuidage code;
   final String message;
@@ -192,7 +210,7 @@ class EvaluateurCapture {
     final etats = <EtatDoigt>[];
     var horsCadre = false;
     for (final d in etape.doigts) {
-      final zone = zoneEmpreinte(points[Reperes.bouts[d]], points[Reperes.articulations[d]]);
+      final zone = zoneDuDoigt(points, d);
       final dansCadre = _dansCadre(zone, a.largeur.toDouble(), a.hauteur.toDouble());
       horsCadre |= !dansCadre;
       final dpi = zone.largeur * facteurCapture * pxParMm;
@@ -214,9 +232,12 @@ class EvaluateurCapture {
     // Immobilité : comparée à l'analyse précédente (toujours mise à jour).
     final mouvement = _mouvement(bouts, largeurMoyenne);
     _boutsPrecedents = bouts;
+    final platitude = _platitude(main, etape, a.largeur.toDouble(), largeurMoyenne);
 
     CodeGuidage? probleme;
-    if (horsCadre) {
+    if (seuils.platitudeMax > 0 && platitude != null && platitude > seuils.platitudeMax) {
+      probleme = CodeGuidage.aplatir;
+    } else if (horsCadre) {
       probleme = CodeGuidage.horsCadre;
     } else if (dpiMoyen < seuils.dpiMin) {
       probleme = CodeGuidage.rapprocher;
@@ -237,6 +258,7 @@ class EvaluateurCapture {
         main: main,
         doigts: etats,
         dpi: dpiMoyen,
+        platitude: platitude,
       );
     }
 
@@ -254,7 +276,18 @@ class EvaluateurCapture {
       doigts: etats,
       dpi: dpiMoyen,
       progression: progression,
+      platitude: platitude,
     );
+  }
+
+  /// Écart de profondeur (MediaPipe z, échelle ≈ largeur de l'image) entre le
+  /// bout le plus proche et le plus éloigné, en largeurs de doigt. 4 doigts seulement.
+  double? _platitude(MainDetectee main, EtapeCapture etape, double largeurImage, double largeurDoigt) {
+    if (etape.type != TypeEtape.quatreDoigts || main.profondeurs.length < 21 || largeurDoigt <= 0) {
+      return null;
+    }
+    final z = [for (final d in etape.doigts) main.profondeurs[Reperes.bouts[d]] * largeurImage];
+    return (z.reduce(math.max) - z.reduce(math.min)) / largeurDoigt;
   }
 
   Guidage _echec(CodeGuidage code, {required EtapeCapture etape, MainDetectee? main}) {
@@ -333,6 +366,7 @@ class EvaluateurCapture {
     CodeGuidage.aucuneMain: 'Présentez la main devant la caméra.',
     CodeGuidage.mauvaiseMain: "Ce n'est pas la bonne main.",
     CodeGuidage.tournerPaume: 'Tournez la paume vers la caméra.',
+    CodeGuidage.aplatir: 'Tenez la main bien à plat, face au téléphone.',
     CodeGuidage.horsCadre: 'Gardez les doigts dans le cadre.',
     CodeGuidage.rapprocher: 'Rapprochez la main.',
     CodeGuidage.eloigner: 'Éloignez un peu la main.',

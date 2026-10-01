@@ -29,6 +29,12 @@ void main() {
       expect(milieu.dy, closeTo(zone.centre.dy, 1e-9));
     });
 
+    test('pouce : zone décalée vers le bout (identique au Kotlin)', () {
+      final zone = zoneEmpreinte(const Offset(100, 160), const Offset(100, 200), debut: debutPouce);
+      expect(zone.longueur, closeTo(36, 1e-9));
+      expect(zone.centre.dy, closeTo(164, 1e-9));
+    });
+
     test('5 zones par main, centre des bouts sans le pouce', () {
       final points = List.generate(21, (i) => Offset(i.toDouble(), 2.0 * i));
       expect(zonesEmpreintes(points), hasLength(5));

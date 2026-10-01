@@ -39,10 +39,14 @@ class MainDetectee {
     this.etiquetteBrute = '',
     this.produit = 0,
     this.doigts = const [],
+    this.profondeurs = const [],
   });
 
   /// Mesures des 5 doigts (pouce en premier) ; vide si non fournies.
   final List<MesuresDoigt> doigts;
+
+  /// Profondeur relative des 21 points (MediaPipe « z », échelle ≈ largeur de l'image).
+  final List<double> profondeurs;
 
   /// Diagnostic : étiquette MediaPipe avant correction (« Left »/« Right »).
   final String etiquetteBrute;
@@ -75,6 +79,9 @@ class MainDetectee {
       doigts: [
         for (final d in (m['doigts'] as List?) ?? const [])
           MesuresDoigt.depuisMap(d as Map<Object?, Object?>),
+      ],
+      profondeurs: [
+        for (final z in (m['profondeurs'] as List?) ?? const []) (z as num).toDouble(),
       ],
     );
   }
@@ -130,7 +137,19 @@ class DecoupeDoigt {
     required this.eblouissement,
     required this.dpiEstime,
     required this.photo,
+    this.netteteLaplacien = 0,
+    this.acceptee = true,
+    this.rafale = 1,
   });
+
+  /// Ancienne mesure (variance du Laplacien), gardée pour comparaison.
+  final double netteteLaplacien;
+
+  /// Netteté au-dessus du seuil.
+  final bool acceptee;
+
+  /// Rafale d'où vient la découpe (1 = première ; 2-3 = rafales ciblées).
+  final int rafale;
 
   /// 0 = pouce … 4 = auriculaire.
   final int doigt;
@@ -144,7 +163,7 @@ class DecoupeDoigt {
   final int largeur;
   final int hauteur;
 
-  /// Netteté des crêtes (variance du Laplacien en pleine résolution).
+  /// Netteté des crêtes, 0..1 (énergie dans la bande des crêtes × cohérence).
   final double nettete;
   final double luminance;
   final double eblouissement;
@@ -167,6 +186,9 @@ class DecoupeDoigt {
         eblouissement: (m['eblouissement'] as num).toDouble(),
         dpiEstime: (m['dpiEstime'] as num).toDouble(),
         photo: (m['photo'] as num).toInt(),
+        netteteLaplacien: (m['netteteLaplacien'] as num?)?.toDouble() ?? 0,
+        acceptee: m['acceptee'] as bool? ?? true,
+        rafale: (m['rafale'] as num?)?.toInt() ?? 1,
       );
 }
 
@@ -180,7 +202,13 @@ class ResultatCapture {
     this.dureePhotosMs = 0,
     this.dureeTotaleMs = 0,
     this.dossier,
+    this.rafales = 1,
+    this.seuilNettete = 0,
   });
+
+  /// Nombre de rafales faites (plus d'une si des doigts étaient flous).
+  final int rafales;
+  final double seuilNettete;
 
   final bool succes;
   final String? raison;
@@ -201,6 +229,8 @@ class ResultatCapture {
         dureePhotosMs: (m['dureePhotosMs'] as num?)?.toInt() ?? 0,
         dureeTotaleMs: (m['dureeTotaleMs'] as num?)?.toInt() ?? 0,
         dossier: m['dossier'] as String?,
+        rafales: (m['rafales'] as num?)?.toInt() ?? 1,
+        seuilNettete: (m['seuilNettete'] as num?)?.toDouble() ?? 0,
       );
 }
 
@@ -261,6 +291,7 @@ class CaptureNative {
     required List<int> doigts,
     required String session,
     required bool debogage,
+    required double seuilNettete,
     Offset? miseAuPoint,
   }) async {
     final reponse = await _canal.invokeMapMethod<Object?, Object?>('capturer', {
@@ -268,6 +299,7 @@ class CaptureNative {
       'doigts': doigts,
       'session': session,
       'debogage': debogage,
+      'seuilNettete': seuilNettete,
       if (miseAuPoint != null) 'x': miseAuPoint.dx,
       if (miseAuPoint != null) 'y': miseAuPoint.dy,
     });

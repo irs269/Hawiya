@@ -26,11 +26,17 @@ data class MainDetectee(
     val produit: Float,
     /** Taille de la main en pixels (poignet → base du majeur), pour choisir la plus grande. */
     val taillePx: Float,
+    /**
+     * Profondeur relative de chaque point (MediaPipe « z ») : origine au poignet,
+     * plus petit = plus proche de la caméra, à peu près à l'échelle de x.
+     */
+    val profondeurs: FloatArray = FloatArray(0),
 ) {
     fun versMap(): Map<String, Any> = mapOf(
         "cote" to cote,
         "confiance" to confiance.toDouble(),
         "points" to points.map { it.toDouble() },
+        "profondeurs" to profondeurs.map { it.toDouble() },
         "paume" to paumeVersCamera,
         "etiquetteBrute" to etiquetteBrute,
         "produit" to produit.toDouble(),
@@ -104,9 +110,11 @@ class DetecteurMain(context: Context, private val video: Boolean = true) : Close
             // personne (« Left » = main gauche). Aucune inversion à faire.
             val cote = if (categorie.categoryName() == "Left") "gauche" else "droite"
             val points = FloatArray(reperesMain.size * 2)
+            val profondeurs = FloatArray(reperesMain.size)
             reperesMain.forEachIndexed { j, p ->
                 points[2 * j] = p.x()
                 points[2 * j + 1] = p.y()
+                profondeurs[j] = p.z()
             }
             val produit = produitVectoriel(points, image.width, image.height)
             val paume = if (cote == "droite") produit < 0 else produit > 0
@@ -114,7 +122,7 @@ class DetecteurMain(context: Context, private val video: Boolean = true) : Close
                 (points[2 * BASE_MAJEUR] - points[2 * POIGNET]) * image.width,
                 (points[2 * BASE_MAJEUR + 1] - points[2 * POIGNET + 1]) * image.height,
             )
-            MainDetectee(cote, categorie.score(), points, paume, categorie.categoryName(), produit, taille)
+            MainDetectee(cote, categorie.score(), points, paume, categorie.categoryName(), produit, taille, profondeurs)
         }
 
     /**

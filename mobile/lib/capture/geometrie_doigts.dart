@@ -62,24 +62,36 @@ class ZoneDoigt {
 /// on prolonge donc la zone de 35 % du segment au-delà du bout. La largeur
 /// d'un doigt est proche de la longueur de sa dernière phalange.
 /// Ces proportions sont une première estimation, à ajuster à l'étape 3b.
-ZoneDoigt zoneEmpreinte(Offset bout, Offset articulation) {
+///
+/// [debut] : où commence la zone, en fraction du segment articulation → bout
+/// (le pouce commence plus loin : voir [debutPouce]). Identique à Zone.empreinte (Kotlin).
+ZoneDoigt zoneEmpreinte(Offset bout, Offset articulation, {double debut = 0, double extension = 0.35}) {
   final segment = bout - articulation;
   final longueurSegment = segment.distance;
   final angle = math.atan2(segment.dy, segment.dx);
-  final debut = articulation;
-  final fin = bout + segment * 0.35;
+  final depart = articulation + segment * debut;
+  final fin = bout + segment * extension;
   return ZoneDoigt(
-    centre: (debut + fin) / 2,
-    longueur: longueurSegment * 1.35,
+    centre: (depart + fin) / 2,
+    longueur: longueurSegment * (1 + extension - debut),
     largeur: longueurSegment * 1.0,
     angle: angle,
   );
 }
 
+/// Pouce en pose « poing fermé, pouce levé » : la pulpe commence plus près du bout.
+const debutPouce = 0.45;
+
+/// Zone de l'empreinte du doigt [doigt] (0 = pouce … 4 = auriculaire), points en pixels.
+ZoneDoigt zoneDuDoigt(List<Offset> points, int doigt) => zoneEmpreinte(
+      points[Reperes.bouts[doigt]],
+      points[Reperes.articulations[doigt]],
+      debut: doigt == 0 ? debutPouce : 0,
+    );
+
 /// Les 5 zones d'empreintes d'une main (pouce en premier).
 List<ZoneDoigt> zonesEmpreintes(List<Offset> points) => [
-      for (var i = 0; i < Reperes.bouts.length; i++)
-        zoneEmpreinte(points[Reperes.bouts[i]], points[Reperes.articulations[i]]),
+      for (var i = 0; i < Reperes.bouts.length; i++) zoneDuDoigt(points, i),
     ];
 
 /// Passage des coordonnées de l'image analysée à celles de l'aperçu affiché.

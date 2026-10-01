@@ -24,6 +24,16 @@ class MesuresTest {
     }
 
     @Test
+    fun `zone du pouce décalée vers le bout`() {
+        // Pouce vertical : articulation (100,200), bout (100,160), segment 40 px.
+        val z = Zone.empreinte(100f, 160f, 100f, 200f, debut = Zone.DEBUT_POUCE)
+        // De y = 200 − 0,45×40 = 182 jusqu'à y = 160 − 0,35×40 = 146.
+        assertEquals(36f, z.longueur, 1e-4f)
+        assertEquals(164f, z.cy, 1e-4f)
+        assertEquals(40f, z.largeur, 1e-4f)
+    }
+
+    @Test
     fun `zone dans ou hors de l image`() {
         val z = Zone.empreinte(100f, 160f, 100f, 200f)
         assertTrue(z.dansImage(300, 300))

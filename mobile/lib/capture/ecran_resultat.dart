@@ -56,8 +56,9 @@ class EcranResultatEtape extends StatelessWidget {
           GrilleDecoupes(decoupes: resultat.decoupes),
           const SizedBox(height: 12),
           Text(
-            'Photos : ${resultat.resolution} · rafale ${resultat.dureePhotosMs} ms · '
-            'total ${resultat.dureeTotaleMs} ms',
+            'Photos : ${resultat.resolution} · ${resultat.rafales} rafale(s), '
+            'photos ${resultat.dureePhotosMs} ms · total ${resultat.dureeTotaleMs} ms · '
+            'seuil de netteté ${(resultat.seuilNettete * 100).toStringAsFixed(1)} %',
             style: const TextStyle(color: Colors.black54, fontSize: 13),
           ),
           if (debogage && resultat.dossier != null) ...[
@@ -88,6 +89,15 @@ class EcranResultatEtape extends StatelessWidget {
               ),
             ),
           ]),
+          // Mode débogage : garder une capture refusée (pour l'évaluation).
+          if (debogage && !resultat.succes && resultat.decoupes.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: TextButton(
+                onPressed: () => Navigator.pop(context, 'accepter'),
+                child: const Text('Accepter quand même (débogage)'),
+              ),
+            ),
         ],
       ),
     );
@@ -180,11 +190,19 @@ class GrilleDecoupes extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text('${d.nom[0].toUpperCase()}${d.nom.substring(1)} · ISO ${d.iso}',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                Row(children: [
+                  Icon(d.acceptee ? Icons.check_circle : Icons.blur_on,
+                      size: 16, color: d.acceptee ? Couleurs.vertProfond : Couleurs.dore),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text('${d.nom[0].toUpperCase()}${d.nom.substring(1)} · ISO ${d.iso}',
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                ]),
                 Text(
-                  'netteté ${d.nettete.toStringAsFixed(0)} · ≈${d.dpiEstime.toStringAsFixed(0)} dpi\n'
-                  '${d.largeur}×${d.hauteur} px · photo ${d.photo}/3',
+                  'netteté ${(d.nettete * 100).toStringAsFixed(1)} %${d.acceptee ? '' : ' (floue)'}'
+                  ' · ≈${d.dpiEstime.toStringAsFixed(0)} dpi\n'
+                  '${d.largeur}×${d.hauteur} px · rafale ${d.rafale}, photo ${d.photo}',
                   style: const TextStyle(fontSize: 12, color: Colors.black54),
                 ),
               ],

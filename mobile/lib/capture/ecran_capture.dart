@@ -191,6 +191,7 @@ class _EcranCaptureState extends State<EcranCapture> {
         doigts: _etape.doigts,
         session: _session,
         debogage: _debogage,
+        seuilNettete: _evaluateur.seuils.seuilNettete,
         miseAuPoint: _pointMiseAuPoint(a, g.main!),
       );
     } catch (e) {
@@ -219,7 +220,8 @@ class _EcranCaptureState extends State<EcranCapture> {
     );
     if (!mounted) return;
 
-    if (choix == 'suivant' && resultat.succes) {
+    // « accepter » : mode débogage uniquement, pour garder une capture refusée.
+    if (choix == 'suivant' || choix == 'accepter') {
       _resultats[_indexEtape] = resultat;
       if (_indexEtape + 1 < total) {
         setState(() => _indexEtape++);
@@ -576,6 +578,8 @@ class _EcranCaptureState extends State<EcranCapture> {
         _ => 'CHAUD (${a!.thermique})',
       }),
       ('Guidage', g?.code.name ?? '—'),
+      ('Main à plat', g?.platitude == null ? '—' : '${g!.platitude!.toStringAsFixed(2)} largeur(s) de doigt'),
+      ('Seuil netteté', _evaluateur.seuils.seuilNettete.toStringAsFixed(3)),
       ('Session', _session),
     ];
     return Container(

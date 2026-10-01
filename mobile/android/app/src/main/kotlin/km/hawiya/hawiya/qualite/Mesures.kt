@@ -33,8 +33,8 @@ class ImageGris(val largeur: Int, val hauteur: Int, val pixels: IntArray) {
  * Zone orientée qui contient l'empreinte d'un bout de doigt (en pixels).
  *
  * MÊME FORMULE que zoneEmpreinte() dans mobile/lib/capture/geometrie_doigts.dart :
- * de l'articulation jusqu'à 35 % au-delà du point « bout » MediaPipe,
- * largeur ≈ longueur de la dernière phalange.
+ * de l'articulation (ou un peu au-delà pour le pouce) jusqu'à 35 % au-delà du
+ * point « bout » MediaPipe, largeur ≈ longueur de la dernière phalange.
  */
 data class Zone(
     val cx: Float,
@@ -51,16 +51,36 @@ data class Zone(
         val BOUTS = intArrayOf(4, 8, 12, 16, 20)
         val ARTICULATIONS = intArrayOf(3, 7, 11, 15, 19)
 
-        fun empreinte(boutX: Float, boutY: Float, artX: Float, artY: Float, agrandissement: Float = 1f): Zone {
+        /** Début de la zone, en fraction du segment articulation → bout (0 = à l'articulation). */
+        const val DEBUT_DOIGT = 0f
+
+        /**
+         * Pouce : dans la pose « poing fermé, pouce levé », le point MediaPipe de
+         * l'articulation tombe trop bas ; la pulpe commence plus près du bout
+         * (constaté sur S23 Ultra, étape 3b : le pli apparaissait dans la découpe).
+         */
+        const val DEBUT_POUCE = 0.45f
+
+        /** Prolongement au-delà du point « bout », en fraction du segment. */
+        const val EXTENSION = 0.35f
+
+        fun empreinte(
+            boutX: Float, boutY: Float, artX: Float, artY: Float,
+            agrandissement: Float = 1f,
+            debut: Float = DEBUT_DOIGT,
+            extension: Float = EXTENSION,
+        ): Zone {
             val sx = boutX - artX
             val sy = boutY - artY
             val segment = hypot(sx, sy)
-            val finX = boutX + sx * 0.35f
-            val finY = boutY + sy * 0.35f
+            val departX = artX + sx * debut
+            val departY = artY + sy * debut
+            val finX = boutX + sx * extension
+            val finY = boutY + sy * extension
             return Zone(
-                cx = (artX + finX) / 2f,
-                cy = (artY + finY) / 2f,
-                longueur = segment * 1.35f * agrandissement,
+                cx = (departX + finX) / 2f,
+                cy = (departY + finY) / 2f,
+                longueur = segment * (1f + extension - debut) * agrandissement,
                 largeur = segment * 1.0f * agrandissement,
                 angle = atan2(sy, sx),
             )
@@ -77,6 +97,7 @@ data class Zone(
                 points[2 * b] * largeur, points[2 * b + 1] * hauteur,
                 points[2 * a] * largeur, points[2 * a + 1] * hauteur,
                 agrandissement,
+                debut = if (doigt == 0) DEBUT_POUCE else DEBUT_DOIGT,
             )
         }
     }

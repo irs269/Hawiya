@@ -106,7 +106,13 @@ class CanalCapture(
                 val x = call.argument<Double>("x")
                 val y = call.argument<Double>("y")
                 moteur.capturer(
-                    ParametresCapture(main, doigts, call.argument<Boolean>("debogage") ?: false, session),
+                    ParametresCapture(
+                        main = main,
+                        doigts = doigts,
+                        debogage = call.argument<Boolean>("debogage") ?: false,
+                        session = session,
+                        seuilNettete = call.argument<Double>("seuilNettete") ?: 0.0,
+                    ),
                     apercu,
                     if (x != null && y != null) Pair(x.toFloat(), y.toFloat()) else null,
                 ) { reponse -> result.success(reponse) }
