@@ -83,6 +83,9 @@ class ResultatVariante:
     echecs: int
     scores_doigt: tuple[list[float], list[float]]
     scores_main: tuple[list[float], list[float]]
+    # Matrice complète des scores et découpes correspondantes (pour les simulations).
+    matrice: np.ndarray | None = None
+    gardes: list[Echantillon] | None = None
 
 
 # Comparaison multi-échelle : SourceAFIS perd la correspondance dès ~10 % d'erreur
@@ -196,6 +199,8 @@ def evaluer_variante(
         echecs=echecs,
         scores_doigt=(authentiques, imposteurs),
         scores_main=paires_main["somme"],
+        matrice=scores,
+        gardes=gardes,
     )
 
 
