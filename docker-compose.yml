@@ -31,7 +31,19 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
 
-  # Le service « matcher » (SourceAFIS) sera ajouté à la phase 4.
+  # Comparaison des empreintes (SourceAFIS). Aucun port publié : joignable
+  # uniquement par le backend, sur le réseau interne, avec MATCHER_CLE.
+  matcher:
+    build: ./matcher
+    environment:
+      MATCHER_CLE: ${MATCHER_CLE}
+      MATCHER_PORT: "8080"
+      # Galerie chargée depuis PostgreSQL (compte lecture seule) : branché en 4d.
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
 volumes:
   donnees_postgres:
