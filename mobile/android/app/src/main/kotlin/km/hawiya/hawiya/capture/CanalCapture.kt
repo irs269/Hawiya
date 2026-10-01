@@ -95,6 +95,34 @@ class CanalCapture(
                 if (vue != null && x != null && y != null) moteur.mettreAuPoint(vue, x.toFloat(), y.toFloat())
                 result.success(null)
             }
+            "capturer" -> {
+                val doigts = call.argument<List<Int>>("doigts")
+                val main = call.argument<String>("main")
+                val session = call.argument<String>("session")
+                if (doigts.isNullOrEmpty() || main == null || session == null) {
+                    result.error("ARGUMENTS", "main, doigts et session sont obligatoires", null)
+                    return
+                }
+                val x = call.argument<Double>("x")
+                val y = call.argument<Double>("y")
+                moteur.capturer(
+                    ParametresCapture(main, doigts, call.argument<Boolean>("debogage") ?: false, session),
+                    apercu,
+                    if (x != null && y != null) Pair(x.toFloat(), y.toFloat()) else null,
+                ) { reponse -> result.success(reponse) }
+            }
+            "pause" -> {
+                moteur.pause()
+                result.success(null)
+            }
+            "reprendre" -> {
+                moteur.reprendre()
+                result.success(null)
+            }
+            "supprimerTemporaires" -> {
+                moteur.supprimerTemporaires()
+                result.success(null)
+            }
             "infos" -> result.success(moteur.infos.toMap())
             else -> result.notImplemented()
         }

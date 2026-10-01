@@ -1,5 +1,34 @@
 import 'package:flutter/services.dart';
 
+/// Mesures de qualité d'un doigt sur l'image d'analyse (calculées en Kotlin).
+class MesuresDoigt {
+  const MesuresDoigt({
+    required this.visible,
+    this.nettete = 0,
+    this.luminance = 0,
+    this.eblouissement = 0,
+  });
+
+  /// La zone de l'empreinte est entièrement dans l'image.
+  final bool visible;
+
+  /// Variance du Laplacien (contours ; les crêtes sont trop fines à cette résolution).
+  final double nettete;
+
+  /// 0..255.
+  final double luminance;
+
+  /// Part des pixels éblouis par le flash (0..1).
+  final double eblouissement;
+
+  factory MesuresDoigt.depuisMap(Map<Object?, Object?> m) => MesuresDoigt(
+        visible: m['visible'] as bool,
+        nettete: (m['nettete'] as num?)?.toDouble() ?? 0,
+        luminance: (m['luminance'] as num?)?.toDouble() ?? 0,
+        eblouissement: (m['eblouissement'] as num?)?.toDouble() ?? 0,
+      );
+}
+
 /// Une main détectée par MediaPipe (coordonnées normalisées 0..1, image portrait).
 class MainDetectee {
   const MainDetectee({
@@ -9,7 +38,11 @@ class MainDetectee {
     required this.paume,
     this.etiquetteBrute = '',
     this.produit = 0,
+    this.doigts = const [],
   });
+
+  /// Mesures des 5 doigts (pouce en premier) ; vide si non fournies.
+  final List<MesuresDoigt> doigts;
 
   /// Diagnostic : étiquette MediaPipe avant correction (« Left »/« Right »).
   final String etiquetteBrute;
@@ -39,6 +72,10 @@ class MainDetectee {
       paume: m['paume'] as bool,
       etiquetteBrute: m['etiquetteBrute'] as String? ?? '',
       produit: (m['produit'] as num?)?.toDouble() ?? 0,
+      doigts: [
+        for (final d in (m['doigts'] as List?) ?? const [])
+          MesuresDoigt.depuisMap(d as Map<Object?, Object?>),
+      ],
     );
   }
 }
@@ -76,6 +113,94 @@ class Analyse {
           for (final main in m['mains'] as List)
             MainDetectee.depuisMap(main as Map<Object?, Object?>),
         ],
+      );
+}
+
+/// Découpe pleine résolution d'un bout de doigt (meilleure des 3 photos).
+class DecoupeDoigt {
+  const DecoupeDoigt({
+    required this.doigt,
+    required this.iso,
+    required this.nom,
+    required this.chemin,
+    required this.largeur,
+    required this.hauteur,
+    required this.nettete,
+    required this.luminance,
+    required this.eblouissement,
+    required this.dpiEstime,
+    required this.photo,
+  });
+
+  /// 0 = pouce … 4 = auriculaire.
+  final int doigt;
+
+  /// Numérotation ISO/IEC 19794 (1 = pouce droit … 10 = auriculaire gauche).
+  final int iso;
+  final String nom;
+
+  /// Fichier PNG sur le téléphone.
+  final String chemin;
+  final int largeur;
+  final int hauteur;
+
+  /// Netteté des crêtes (variance du Laplacien en pleine résolution).
+  final double nettete;
+  final double luminance;
+  final double eblouissement;
+
+  /// Résolution estimée, en supposant un doigt de 18 mm de large.
+  final double dpiEstime;
+
+  /// Numéro de la photo de la rafale retenue (1 à 3).
+  final int photo;
+
+  factory DecoupeDoigt.depuisMap(Map<Object?, Object?> m) => DecoupeDoigt(
+        doigt: (m['doigt'] as num).toInt(),
+        iso: (m['iso'] as num).toInt(),
+        nom: m['nom'] as String,
+        chemin: m['chemin'] as String,
+        largeur: (m['largeur'] as num).toInt(),
+        hauteur: (m['hauteur'] as num).toInt(),
+        nettete: (m['nettete'] as num).toDouble(),
+        luminance: (m['luminance'] as num).toDouble(),
+        eblouissement: (m['eblouissement'] as num).toDouble(),
+        dpiEstime: (m['dpiEstime'] as num).toDouble(),
+        photo: (m['photo'] as num).toInt(),
+      );
+}
+
+/// Résultat d'une rafale.
+class ResultatCapture {
+  const ResultatCapture({
+    required this.succes,
+    this.raison,
+    this.decoupes = const [],
+    this.resolution = '',
+    this.dureePhotosMs = 0,
+    this.dureeTotaleMs = 0,
+    this.dossier,
+  });
+
+  final bool succes;
+  final String? raison;
+  final List<DecoupeDoigt> decoupes;
+  final String resolution;
+  final int dureePhotosMs;
+  final int dureeTotaleMs;
+  final String? dossier;
+
+  factory ResultatCapture.depuisMap(Map<Object?, Object?> m) => ResultatCapture(
+        succes: m['succes'] as bool,
+        raison: m['raison'] as String?,
+        decoupes: [
+          for (final d in (m['resultats'] as List?) ?? const [])
+            DecoupeDoigt.depuisMap(d as Map<Object?, Object?>),
+        ],
+        resolution: m['resolution'] as String? ?? '',
+        dureePhotosMs: (m['dureePhotosMs'] as num?)?.toInt() ?? 0,
+        dureeTotaleMs: (m['dureeTotaleMs'] as num?)?.toInt() ?? 0,
+        dossier: m['dossier'] as String?,
       );
 }
 
@@ -128,4 +253,32 @@ class CaptureNative {
   /// Mise au point sur un point de l'aperçu (coordonnées 0..1).
   static Future<void> mettreAuPoint(Offset point) =>
       _canal.invokeMethod('mettreAuPoint', {'x': point.dx, 'y': point.dy});
+
+  /// Rafale de 3 photos + découpes des [doigts] (0 = pouce … 4 = auriculaire).
+  /// [miseAuPoint] : point de l'aperçu (0..1) sur lequel verrouiller la mise au point.
+  static Future<ResultatCapture> capturer({
+    required String main,
+    required List<int> doigts,
+    required String session,
+    required bool debogage,
+    Offset? miseAuPoint,
+  }) async {
+    final reponse = await _canal.invokeMapMethod<Object?, Object?>('capturer', {
+      'main': main,
+      'doigts': doigts,
+      'session': session,
+      'debogage': debogage,
+      if (miseAuPoint != null) 'x': miseAuPoint.dx,
+      if (miseAuPoint != null) 'y': miseAuPoint.dy,
+    });
+    return ResultatCapture.depuisMap(reponse ?? {'succes': false, 'raison': 'Pas de réponse'});
+  }
+
+  /// Arrête l'analyse et le flash (écran résultat, inactivité, chauffe).
+  static Future<void> pause() => _canal.invokeMethod('pause');
+
+  static Future<void> reprendre() => _canal.invokeMethod('reprendre');
+
+  /// Efface les découpes temporaires (hors mode débogage).
+  static Future<void> supprimerTemporaires() => _canal.invokeMethod('supprimerTemporaires');
 }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'capture/ecran_test_camera.dart';
+import 'capture/ecran_capture.dart';
 import 'theme/couleurs.dart';
 
 void main() {
@@ -27,9 +27,9 @@ class HawiyaApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: Couleurs.ivoire,
       ),
-      // Étape 3a : l'application ne contient que l'écran de test caméra.
+      // Étape 3b : l'application ne contient que la capture des empreintes.
       // La navigation complète arrive en phase 2.
-      home: const EcranTestCamera(),
+      home: const EcranCapture(),
     );
   }
 }

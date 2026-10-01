@@ -52,6 +52,9 @@ dependencies {
 
     // Détection de la main et des 21 points de repère
     implementation("com.google.mediapipe:tasks-vision:0.10.21")
+
+    // Tests sur PC des calculs de qualité (android/app/src/test)
+    testImplementation("junit:junit:4.13.2")
 }
 
 flutter {
