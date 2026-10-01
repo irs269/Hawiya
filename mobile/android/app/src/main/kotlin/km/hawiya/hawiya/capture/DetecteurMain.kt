@@ -52,7 +52,8 @@ class DetecteurMain(context: Context) : Closeable {
         var choisi = "GPU"
         reperes = try {
             creer(context, Delegate.GPU)
-        } catch (e: Exception) {
+        } catch (e: RuntimeException) {
+            // Délégué GPU refusé par le téléphone : repli sur le processeur.
             choisi = "CPU"
             creer(context, Delegate.CPU)
         }

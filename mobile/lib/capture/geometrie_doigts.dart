@@ -82,6 +82,38 @@ List<ZoneDoigt> zonesEmpreintes(List<Offset> points) => [
         zoneEmpreinte(points[Reperes.bouts[i]], points[Reperes.articulations[i]]),
     ];
 
+/// Passage des coordonnées de l'image analysée à celles de l'aperçu affiché.
+///
+/// L'aperçu est en mode « image entière » (FIT_CENTER) : si l'image n'a pas
+/// le même format que la zone d'affichage, elle est centrée avec des bandes
+/// noires. On applique exactement la même transformation aux points.
+class CalageApercu {
+  CalageApercu({required Size image, required Size zone})
+      : echelle = math.min(zone.width / image.width, zone.height / image.height),
+        _zone = zone,
+        _image = image;
+
+  final double echelle;
+  final Size _zone;
+  final Size _image;
+
+  Offset get _decalage => Offset(
+        (_zone.width - _image.width * echelle) / 2,
+        (_zone.height - _image.height * echelle) / 2,
+      );
+
+  /// Point normalisé (0..1) de l'image → pixel de la zone d'affichage.
+  Offset versZone(Offset normalise) =>
+      _decalage +
+      Offset(normalise.dx * _image.width, normalise.dy * _image.height) * echelle;
+
+  /// Point normalisé de l'image → point normalisé de la zone d'affichage.
+  Offset versZoneNormalisee(Offset normalise) {
+    final p = versZone(normalise);
+    return Offset(p.dx / _zone.width, p.dy / _zone.height);
+  }
+}
+
 /// Centre des 4 bouts de doigts (sans le pouce) : point de mise au point.
 Offset centreDesBouts(List<Offset> points) {
   var somme = Offset.zero;

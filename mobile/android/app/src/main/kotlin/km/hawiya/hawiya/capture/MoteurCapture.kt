@@ -220,15 +220,16 @@ class MoteurCapture(
                 detecteur = it
                 infos["delegue"] = it.delegue
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Throwable : une bibliothèque native absente lève une Error, pas une Exception.
             detecteurEnErreur = true
-            envoyer(
-                mapOf(
-                    "type" to "erreur",
-                    "message" to "Modèle MediaPipe introuvable ou invalide " +
-                        "(${DetecteurMain.MODELE}) : ${e.message}",
-                ),
-            )
+            val message = if (e is UnsatisfiedLinkError || e.cause is UnsatisfiedLinkError) {
+                "MediaPipe n'existe pas pour ce processeur (${Build.SUPPORTED_ABIS.joinToString()}). " +
+                    "Utiliser un téléphone ARM ou un APK arm64."
+            } else {
+                "Modèle MediaPipe introuvable ou invalide (${DetecteurMain.MODELE}) : ${e.message}"
+            }
+            envoyer(mapOf("type" to "erreur", "message" to message))
             null
         }
     }

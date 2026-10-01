@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show Size;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hawiya/capture/capture_native.dart';
@@ -33,6 +34,22 @@ void main() {
       expect(zonesEmpreintes(points), hasLength(5));
       // Moyenne des points 8, 12, 16, 20.
       expect(centreDesBouts(points), const Offset(14, 28));
+    });
+  });
+
+  group('Calage image → aperçu', () {
+    test('image paysage 640×480 dans une zone portrait 300×400 : bandes en haut et en bas', () {
+      final calage = CalageApercu(image: const Size(640, 480), zone: const Size(300, 400));
+      // Échelle limitée par la largeur : 300/640. Hauteur affichée 225, bandes de 87,5.
+      expect(calage.versZone(Offset.zero), const Offset(0, 87.5));
+      expect(calage.versZone(const Offset(1, 1)), const Offset(300, 312.5));
+      expect(calage.versZone(const Offset(0.5, 0.5)), const Offset(150, 200));
+    });
+
+    test('même format : aucune bande', () {
+      final calage = CalageApercu(image: const Size(480, 640), zone: const Size(300, 400));
+      expect(calage.versZone(const Offset(1, 1)), const Offset(300, 400));
+      expect(calage.versZoneNormalisee(const Offset(0.25, 0.75)), const Offset(0.25, 0.75));
     });
   });
 

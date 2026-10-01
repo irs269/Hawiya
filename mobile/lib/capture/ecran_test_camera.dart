@@ -30,6 +30,9 @@ class _EcranTestCameraState extends State<EcranTestCamera> {
   bool _flash = true;
   double _zoom = 0;
   DateTime _derniereMiseAuPoint = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Taille de la zone d'aperçu à l'écran (pour caler les points de l'image).
+  Size? _tailleApercu;
   StreamSubscription<Analyse>? _abonnement;
 
   @override
@@ -66,10 +69,17 @@ class _EcranTestCameraState extends State<EcranTestCamera> {
     setState(() => _analyse = analyse);
     // Mise au point automatique sur le centre des bouts de doigts.
     final maintenant = DateTime.now();
-    if (analyse.mains.isNotEmpty &&
+    final zone = _tailleApercu;
+    if (zone != null &&
+        analyse.mains.isNotEmpty &&
         maintenant.difference(_derniereMiseAuPoint) > _intervalleMiseAuPoint) {
       _derniereMiseAuPoint = maintenant;
-      CaptureNative.mettreAuPoint(centreDesBouts(analyse.mains.first.points));
+      final calage = CalageApercu(
+        image: Size(analyse.largeur.toDouble(), analyse.hauteur.toDouble()),
+        zone: zone,
+      );
+      CaptureNative.mettreAuPoint(
+          calage.versZoneNormalisee(centreDesBouts(analyse.mains.first.points)));
     }
   }
 
@@ -184,7 +194,9 @@ class _EcranTestCameraState extends State<EcranTestCamera> {
           // Portrait 3:4, identique à l'image analysée : pas de décalage des points.
           aspectRatio: 3 / 4,
           child: LayoutBuilder(
-            builder: (context, contraintes) => GestureDetector(
+            builder: (context, contraintes) {
+              _tailleApercu = contraintes.biggest;
+              return GestureDetector(
               // Toucher l'aperçu = mise au point à cet endroit.
               onTapUp: (d) => CaptureNative.mettreAuPoint(Offset(
                 d.localPosition.dx / contraintes.maxWidth,
@@ -196,10 +208,11 @@ class _EcranTestCameraState extends State<EcranTestCamera> {
                   viewType: CaptureNative.vueApercu,
                   onPlatformViewCreated: (_) => _demarrer(),
                 ),
-                IgnorePointer(child: CustomPaint(painter: PeintreMain(mains))),
+                IgnorePointer(child: CustomPaint(painter: PeintreMain(_analyse))),
                 Positioned(top: 16, left: 16, child: _badge(mains)),
               ]),
-            ),
+              );
+            },
           ),
         ),
       );
