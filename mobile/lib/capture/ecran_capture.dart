@@ -24,6 +24,8 @@ class EcranCapture extends StatefulWidget {
 class _EcranCaptureState extends State<EcranCapture> {
   static const _intervalleMiseAuPoint = Duration(milliseconds: 1500);
   static const _delaiInactivite = Duration(seconds: 60);
+  static const _thermiqueAvertissement = 3;
+  static const _thermiqueUrgence = 5;
 
   final _evaluateur = EvaluateurCapture();
   bool? _permission;
@@ -113,8 +115,11 @@ class _EcranCaptureState extends State<EcranCapture> {
     if (!mounted || _enPause) return;
     final maintenant = DateTime.now();
     if (a.mains.isNotEmpty) _derniereMainVue = maintenant;
-    if (a.thermique >= 3) {
-      _mettreEnPause('Le téléphone chauffe : laissez-le refroidir quelques minutes.');
+    // Chauffe (PowerManager.THERMAL_STATUS_*) : 3-4 = avertissement seulement
+    // (la pause à 3 bloquait la capture en continu sur S23 Ultra) ;
+    // 5+ = urgence, Android est sur le point de couper la caméra.
+    if (a.thermique >= _thermiqueUrgence) {
+      _mettreEnPause('Le téléphone est très chaud : laissez-le refroidir quelques minutes.');
       return;
     }
     if (_captureEnCours) {
@@ -300,6 +305,17 @@ class _EcranCaptureState extends State<EcranCapture> {
           _apercu(),
           const SizedBox(height: 12),
           _message(),
+          if ((_analyse?.thermique ?? 0) >= _thermiqueAvertissement) ...[
+            const SizedBox(height: 8),
+            const Row(children: [
+              Icon(Icons.thermostat, size: 16, color: Couleurs.alerte),
+              SizedBox(width: 6),
+              Expanded(
+                child: Text('Le téléphone chauffe : faites une pause entre deux personnes.',
+                    style: TextStyle(color: Couleurs.alerte, fontSize: 13)),
+              ),
+            ]),
+          ],
           const SizedBox(height: 10),
           _jaugeDistance(),
           if (_debogage) ...[
@@ -423,7 +439,8 @@ class _EcranCaptureState extends State<EcranCapture> {
                   ),
                 ),
                 const Positioned(top: 16, left: 16, child: _Badge(texte: 'UNE MAIN SUFFIT')),
-                if (_captureEnCours) const _Voile(texte: 'Capture en cours…\nNe bougez plus'),
+                if (_captureEnCours)
+                  const _Voile(texte: 'Capture en cours…\nNe bougez pas : jusqu\'à 3 prises'),
                 if (_enPause && _raisonPause != null) _Voile(texte: _raisonPause!),
               ]),
             );

@@ -63,6 +63,12 @@ class CaptureRafale(
         /** Marge autour de la zone, pour ne pas couper la pulpe du doigt. */
         const val AGRANDISSEMENT = 1.15f
 
+        /**
+         * Résolution minimale d'une découpe : en dessous, la main s'est éloignée
+         * pendant la rafale (constaté sur S23 Ultra : rafale ciblée prise main à ~30 cm).
+         */
+        const val DPI_MIN_PHOTO = 350.0
+
         /** Côté le plus long de l'image donnée à MediaPipe (il réduit de toute façon). */
         const val COTE_DETECTION = 1280
 
@@ -93,6 +99,9 @@ class CaptureRafale(
             internal set
         internal var photosTotal = 0
         internal var photosSansMain = 0
+
+        /** Découpes écartées car la main était trop loin (elle a bougé pendant la rafale). */
+        internal var decoupesTropLoin = 0
         internal var dureePhotosMs = 0L
         internal var resolution = ""
 
@@ -199,10 +208,15 @@ class CaptureRafale(
                 mesuresDoigts.put(JSONObject().put("doigt", doigt).put("dansCadre", false))
                 continue
             }
-            val decoupe = decouper(image, zone)
-            val centre = Mesures.centre(versGris(decoupe))
             val largeurDoigt = zone.largeur / AGRANDISSEMENT
             val dpi = (largeurDoigt / (LARGEUR_DOIGT_MM / 25.4f)).toDouble()
+            if (dpi < DPI_MIN_PHOTO) {
+                etat.decoupesTropLoin++
+                mesuresDoigts.put(JSONObject().put("doigt", doigt).put("dansCadre", true).put("dpi", dpi).put("tropLoin", true))
+                continue
+            }
+            val decoupe = decouper(image, zone)
+            val centre = Mesures.centre(versGris(decoupe))
             val cretes = QualiteCretes.evaluer(centre, dpi)
             val candidate = Decoupe(
                 doigt = doigt,
@@ -276,6 +290,8 @@ class CaptureRafale(
             "raison" to when {
                 etat.photosSansMain == etat.photosTotal ->
                     "Main non retrouvée sur les photos : recommencez sans bouger."
+                absents.isNotEmpty() && etat.decoupesTropLoin > 0 ->
+                    "La main s'est éloignée pendant la capture : recommencez sans bouger."
                 absents.isNotEmpty() ->
                     "Doigt(s) hors du cadre sur les photos : ${absents.joinToString { NOMS_DOIGTS[it] }}."
                 flous.isNotEmpty() ->
@@ -289,6 +305,7 @@ class CaptureRafale(
             "rafales" to etat.rafales,
             "resolution" to etat.resolution,
             "photosSansMain" to etat.photosSansMain,
+            "decoupesTropLoin" to etat.decoupesTropLoin,
             "dureePhotosMs" to etat.dureePhotosMs.toInt(),
             "dureeTotaleMs" to (SystemClock.uptimeMillis() - etat.debut).toInt(),
             "dossier" to dossier.absolutePath,

@@ -67,14 +67,16 @@ class SeuilsCapture {
     this.eblouissementMax = 0.10,
     this.netteteApercuMin = 0,
     this.dureeStabilite = const Duration(milliseconds: 500),
-    this.seuilNettete = 0.03,
+    this.seuilNettete = 0.04,
     this.platitudeMax = 0,
   });
 
   /// Netteté des crêtes minimale (0..1) d'une découpe pleine résolution pour
   /// l'accepter. Calibrage du 01/10/2026 (S23 Ultra, 28 découpes, 9 examinées
   /// à l'œil) : la pire découpe acceptable vaut 0,040, la meilleure refusée
-  /// 0,024 → seuil 0,03. Provisoire : à revoir avec plus de captures.
+  /// 0,024 → seuil 0,03. Validation (2 sessions) : un auriculaire à 0,032
+  /// accepté était presque flou → seuil remonté à 0,04. À revoir avec les
+  /// volontaires (phase 4) : la zone 0,03-0,04 mélange médiocre et flou.
   final double seuilNettete;
 
   /// Écart de profondeur maximal entre les bouts des 4 doigts, en largeurs de
