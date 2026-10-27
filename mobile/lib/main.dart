@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'capture/ecran_capture.dart';
+import 'ecrans/ecran_connexion.dart';
 import 'theme/couleurs.dart';
 
 void main() {
@@ -27,9 +27,9 @@ class HawiyaApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: Couleurs.ivoire,
       ),
-      // Étape 3b : l'application ne contient que la capture des empreintes.
-      // La navigation complète arrive en phase 2.
-      home: const EcranCapture(),
+      // Connexion de l'agent → accueil (identification, enregistrement des
+      // empreintes, test de capture). Les formulaires de fiche : phase 2.
+      home: const EcranConnexion(),
     );
   }
 }

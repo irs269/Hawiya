@@ -80,6 +80,14 @@ Ces routes demandent que le matcher soit démarré. Le téléphone envoie les d�
 | `PUT /citoyens/{numero}/empreintes` | enregistre les modèles. En cas de doublon certain ou possible : refus (409), sauf validation explicite d'un superviseur |
 | `POST /identification` | un à trois scans de la main → `identifie` (avec la fiche), `non_enregistre` ou `non_concluant` |
 
+### Démo avec l'application mobile
+
+1. Sur le PC : `docker compose up` (backend, base, matcher), puis `docker compose exec backend python -m app.seed --reset` pour les fiches fictives.
+2. Téléphone et PC sur le **même Wi-Fi**. Installer la version de débogage : `flutter run` dans `mobile/`. Elle seule autorise le HTTP non chiffré vers le PC.
+3. Dans l'application : saisir l'adresse du PC (ex. `http://192.168.1.10:8000`), puis le matricule et le mot de passe de l'agent de démonstration.
+4. **Enregistrer des empreintes** : saisir le numéro d'une fiche fictive, puis capturer les 4 étapes.
+5. **Identifier une personne** : choisir la main, puis scanner.
+
 Règle : **ne jamais afficher la fiche d'une autre personne**. En cas de doute, la réponse est `non_concluant` : l'agent recommence le scan, puis passe à une vérification manuelle sur pièce d'identité. Conditions et seuils provisoires : [`docs/evaluation/diagnostic-phase4.md`](docs/evaluation/diagnostic-phase4.md).
 
 ## Règles du projet

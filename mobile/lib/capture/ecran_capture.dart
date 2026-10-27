@@ -14,8 +14,24 @@ import 'peintre_main.dart';
 /// La personne présente sa main ; l'application guide, puis déclenche seule une
 /// rafale de 3 photos pleine résolution et découpe chaque bout de doigt.
 /// Enchaînement : main droite → main gauche → pouce droit → pouce gauche.
+///
+/// Utilisé tel quel pour le test de capture (débogage), ou par les parcours
+/// Identification et Enregistrement : `etapes` réduites, et
+/// `renvoyerResultats` pour rendre les découpes à l'écran appelant
+/// (Navigator.pop avec la Map étape → résultat) au lieu de l'écran de fin.
 class EcranCapture extends StatefulWidget {
-  const EcranCapture({super.key});
+  const EcranCapture({
+    super.key,
+    this.etapes = EtapeCapture.sequence,
+    this.debogageInitial = true,
+    this.renvoyerResultats = false,
+    this.titreParcours = 'empreintes',
+  });
+
+  final List<EtapeCapture> etapes;
+  final bool debogageInitial;
+  final bool renvoyerResultats;
+  final String titreParcours;
 
   @override
   State<EcranCapture> createState() => _EcranCaptureState();
@@ -38,7 +54,7 @@ class _EcranCaptureState extends State<EcranCapture> {
   double _zoom = 0;
   /// Activé par défaut pendant le test de faisabilité (phases 3-4) : on garde
   /// les images pour les évaluer. À désactiver par défaut avant la démo.
-  bool _debogage = true;
+  late bool _debogage = widget.debogageInitial;
 
   /// Pause : analyse et flash coupés (inactivité, chauffe, écran résultat).
   bool _enPause = false;
@@ -55,7 +71,7 @@ class _EcranCaptureState extends State<EcranCapture> {
   Timer? _minuteur;
   StreamSubscription<Analyse>? _abonnement;
 
-  EtapeCapture get _etape => EtapeCapture.sequence[_indexEtape];
+  EtapeCapture get _etape => widget.etapes[_indexEtape];
 
   /// Largeur de la photo pleine résolution / largeur de l'image analysée.
   double get _facteurCapture {
@@ -211,7 +227,7 @@ class _EcranCaptureState extends State<EcranCapture> {
       _raisonPause = null;
     });
 
-    final total = EtapeCapture.sequence.length;
+    final total = widget.etapes.length;
     final choix = await Navigator.push<String>(
       context,
       MaterialPageRoute(
@@ -231,6 +247,11 @@ class _EcranCaptureState extends State<EcranCapture> {
       _resultats[_indexEtape] = resultat;
       if (_indexEtape + 1 < total) {
         setState(() => _indexEtape++);
+      } else if (widget.renvoyerResultats) {
+        // Les découpes restent sur le téléphone : l'écran appelant les envoie
+        // puis les efface (CaptureNative.supprimerTemporaires).
+        Navigator.pop(context, Map.of(_resultats));
+        return;
       } else {
         await Navigator.push<void>(
           context,
@@ -333,7 +354,7 @@ class _EcranCaptureState extends State<EcranCapture> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Étape ${_indexEtape + 1} sur ${EtapeCapture.sequence.length} · empreintes',
+                Text('Étape ${_indexEtape + 1} sur ${widget.etapes.length} · ${widget.titreParcours}',
                     style: const TextStyle(
                         color: Couleurs.texteCameraDiscret,
                         fontSize: 12,
@@ -392,7 +413,7 @@ class _EcranCaptureState extends State<EcranCapture> {
   /// Barre de progression en segments (une par étape), comme le prototype.
   Widget _barreEtapes() => Row(
         children: [
-          for (var i = 0; i < EtapeCapture.sequence.length; i++) ...[
+          for (var i = 0; i < widget.etapes.length; i++) ...[
             Expanded(
               child: Container(
                 height: 6,
@@ -406,7 +427,7 @@ class _EcranCaptureState extends State<EcranCapture> {
                 ),
               ),
             ),
-            if (i < EtapeCapture.sequence.length - 1) const SizedBox(width: 6),
+            if (i < widget.etapes.length - 1) const SizedBox(width: 6),
           ],
         ],
       );

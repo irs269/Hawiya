@@ -4,4 +4,9 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- DÉMO LOCALE UNIQUEMENT (version de débogage) : autorise le HTTP non
+         chiffré vers le serveur lancé sur le PC. La version finale n'a pas
+         cette ligne et exige HTTPS (règle « tout chiffrer » du projet). -->
+    <application android:usesCleartextTraffic="true" />
 </manifest>
