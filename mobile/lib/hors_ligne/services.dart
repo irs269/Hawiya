@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'appareil.dart';
 import 'chiffrement.dart';
 import 'coffre.dart';
 import 'file_attente.dart';
@@ -12,10 +13,11 @@ import 'identifiants.dart';
 /// Tout ce qu'il faut pour travailler hors ligne, créé une fois au démarrage
 /// (et construit à la main dans les tests, avec un coffre en mémoire).
 class ServicesHorsLigne {
-  ServicesHorsLigne({required this.file, required this.identifiants, required this.reseau});
+  ServicesHorsLigne({required this.file, required this.identifiants, required this.appareil, required this.reseau});
 
   final FileAttente file;
   final IdentifiantsHorsLigne identifiants;
+  final IdentiteAppareil appareil;
 
   /// Vrai quand le téléphone a un réseau (Wi-Fi, données mobiles…). Le serveur
   /// peut rester injoignable : seul l'envoi le dira.
@@ -28,6 +30,7 @@ class ServicesHorsLigne {
     return ServicesHorsLigne(
       file: FileAttenteChiffree(dossier, await Chiffreur.depuisCoffre(coffre)),
       identifiants: IdentifiantsHorsLigne(coffre),
+      appareil: IdentiteAppareil(coffre),
       reseau: Connectivity()
           .onConnectivityChanged
           .map((etats) => etats.any((e) => e != ConnectivityResult.none))

@@ -11,7 +11,9 @@ from app.referentiels import (
     COULEURS_CHEVEUX,
     COULEURS_YEUX,
     ILES,
+    ROLES_AGENT,
     SEXES,
+    STATUTS_AGENT,
     TAILLE_MAX_CM,
     TAILLE_MIN_CM,
 )
@@ -29,6 +31,19 @@ DATE_NAISSANCE_MIN = date(1900, 1, 1)
 class Jeton(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    # Jeton de renouvellement : à garder dans le coffre de l'appareil.
+    refresh_token: str
+    expires_in: int  # secondes de validité du jeton d'accès
+    doit_changer_mot_de_passe: bool = False
+
+
+class DemandeRenouvellement(BaseModel):
+    refresh_token: str = Field(min_length=16, max_length=200)
+
+
+class DemandeMotDePasse(BaseModel):
+    ancien: str = Field(min_length=1, max_length=200)
+    nouveau: str = Field(min_length=1, max_length=200)
 
 
 class AgentMoi(BaseModel):
@@ -37,6 +52,75 @@ class AgentMoi(BaseModel):
     matricule: str
     nom: str
     role: str
+    doit_changer_mot_de_passe: bool = False
+
+
+Role = Literal[ROLES_AGENT]
+StatutAgent = Literal[STATUTS_AGENT]
+_MOTIF_MATRICULE = re.compile(r"^[A-Z0-9][A-Z0-9-]{2,19}$")
+
+
+class AgentCreation(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    matricule: str = Field(min_length=3, max_length=20)
+    nom: str = Field(min_length=1, max_length=150)
+    role: Role = "agent"
+    ile: Ile | None = None
+    commune: str | None = Field(default=None, max_length=100)
+
+    @field_validator("matricule")
+    @classmethod
+    def valider_matricule(cls, valeur: str) -> str:
+        valeur = valeur.upper()
+        if not _MOTIF_MATRICULE.match(valeur):
+            raise ValueError("Matricule : lettres, chiffres et tirets (3 à 20 caractères)")
+        return valeur
+
+
+class AgentModification(BaseModel):
+    """Champs absents = inchangés."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    nom: str | None = Field(default=None, min_length=1, max_length=150)
+    role: Role | None = None
+    statut: StatutAgent | None = None
+    ile: Ile | None = None
+    commune: str | None = Field(default=None, max_length=100)
+
+
+class AgentLecture(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    matricule: str
+    nom: str
+    role: str
+    statut: str
+    ile: str | None
+    commune: str | None
+    doit_changer_mot_de_passe: bool
+    bloque_jusqu_a: datetime | None
+    cree_le: datetime
+
+
+class AgentAvecMotDePasse(AgentLecture):
+    """Réponse à une création ou réinitialisation : le mot de passe provisoire
+    n'est montré qu'UNE fois, à remettre à l'agent en main propre."""
+
+    mot_de_passe_provisoire: str
+
+
+class AppareilLecture(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    nom: str | None
+    statut: str
+    demande_par: str | None = None  # matricule de l'agent de la première demande
+    approuve_le: datetime | None
+    derniere_connexion: datetime | None
+    cree_le: datetime
 
 
 class CitoyenChamps(BaseModel):

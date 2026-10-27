@@ -54,7 +54,7 @@ class Citoyen {
 
 /// Agent connecté (GET /auth/moi).
 class AgentConnecte {
-  const AgentConnecte({required this.matricule, required this.nom, required this.role});
+  const AgentConnecte({required this.matricule, required this.nom, required this.role, this.doitChangerMotDePasse = false});
 
   final String matricule;
   final String nom;
@@ -62,11 +62,18 @@ class AgentConnecte {
   /// « agent », « superviseur » ou « administrateur ».
   final String role;
 
+  /// Mot de passe provisoire : à changer avant toute autre action.
+  final bool doitChangerMotDePasse;
+
   /// Peut valider un doublon possible (le serveur le vérifie aussi).
   bool get peutValiderDoublon => role == 'superviseur' || role == 'administrateur';
 
-  factory AgentConnecte.depuisJson(Map<String, dynamic> j) =>
-      AgentConnecte(matricule: j['matricule'] as String, nom: j['nom'] as String, role: j['role'] as String);
+  factory AgentConnecte.depuisJson(Map<String, dynamic> j) => AgentConnecte(
+        matricule: j['matricule'] as String,
+        nom: j['nom'] as String,
+        role: j['role'] as String,
+        doitChangerMotDePasse: j['doit_changer_mot_de_passe'] as bool? ?? false,
+      );
 }
 
 /// Un doigt à envoyer : image de la découpe (PNG) et résolution estimée.

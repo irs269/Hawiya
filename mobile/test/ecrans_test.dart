@@ -174,10 +174,11 @@ void main() {
       tester,
       EcranConnexion(
         services: servicesDeTest(),
-        fabriqueClient: (adresse) =>
-            ClientApi(adresse, client: MockClient((_) async => json({'detail': 'refus'}, 401))),
+        fabriqueClient: (adresse, {required identifiantAppareil, surRenouvellement}) => ClientApi(adresse,
+            client: MockClient((_) async => json({'detail': 'Matricule ou mot de passe incorrect.'}, 401))),
       ),
     );
+    await tester.pumpAndSettle(); // fin de la tentative de reprise de session
     await tester.enterText(find.widgetWithText(TextField, 'Matricule agent'), 'AG-0001');
     await tester.enterText(find.widgetWithText(TextField, 'Mot de passe'), 'faux');
     await tester.tap(find.text('Se connecter'));

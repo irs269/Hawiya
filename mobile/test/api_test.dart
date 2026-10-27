@@ -54,17 +54,24 @@ void main() {
 
   test('connexion : formulaire envoyé, jeton mémorisé', () async {
     late http.Request requete;
-    final api = ClientApi('http://serveur', client: MockClient((r) async {
+    final api = ClientApi('http://serveur', identifiantAppareil: 'a1b2c3d4e5f6a7b8', nomAppareil: 'Téléphone fictif',
+        client: MockClient((r) async {
       requete = r;
-      return json({'access_token': 'jeton-fictif'});
+      return json({'access_token': 'jeton-fictif', 'refresh_token': 'renouvellement-fictif', 'doit_changer_mot_de_passe': true});
     }));
-    await api.connexion(' AG-0001 ', 'secret-fictif');
+    expect(await api.connexion(' AG-0001 ', 'secret-fictif'), isTrue); // mot de passe provisoire
     expect(api.connecte, isTrue);
-    expect(requete.bodyFields, {'username': 'AG-0001', 'password': 'secret-fictif'});
+    expect(requete.bodyFields, {
+      'username': 'AG-0001',
+      'password': 'secret-fictif',
+      'client_id': 'a1b2c3d4e5f6a7b8',
+      'appareil_nom': 'Téléphone fictif',
+    });
   });
 
   test('connexion refusée : message clair', () async {
-    final api = ClientApi('http://serveur', client: MockClient((_) async => json({'detail': 'x'}, 401)));
+    final api = ClientApi('http://serveur',
+        client: MockClient((_) async => json({'detail': 'Matricule ou mot de passe incorrect.'}, 401)));
     expect(
       () => api.connexion('AG-0001', 'faux'),
       throwsA(isA<ErreurApi>().having((e) => e.message, 'message', contains('incorrect'))),

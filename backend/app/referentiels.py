@@ -11,6 +11,7 @@ COULEURS_CHEVEUX = ("noirs", "bruns", "chatains", "blonds", "roux", "gris", "bla
 
 ROLES_AGENT = ("agent", "superviseur", "administrateur")
 STATUTS_AGENT = ("actif", "suspendu", "desactive")
+STATUTS_APPAREIL = ("en_attente", "approuve", "revoque")
 
 TAILLE_MIN_CM = 50
 TAILLE_MAX_CM = 250

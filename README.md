@@ -39,9 +39,26 @@ docker compose exec backend python -m app.seed
 
 ### Se connecter dans /docs
 
-1. Cliquer sur **Authorize**.
-2. `username` = `SEED_AGENT_MATRICULE` (par défaut `AG-0001`), `password` = `SEED_AGENT_MOT_DE_PASSE` (voir `.env`).
-3. Tester `POST /citoyens`, `GET /citoyens`, `GET /citoyens/{numero}` et `GET /statistiques`.
+Chaque appareil (téléphone ou poste) doit être **approuvé** avant de pouvoir se connecter.
+
+1. Cliquer sur **Authorize** et saisir :
+   - `username` = `SEED_AGENT_MATRICULE` (par défaut `AG-0001`) ;
+   - `password` = `SEED_AGENT_MOT_DE_PASSE` (voir `.env`) ;
+   - `client_id` = un identifiant pour ce poste, par exemple `poste-demo-0001` (8 caractères au moins).
+2. La première fois, la réponse est « appareil en attente », avec un code. Approuver ce poste depuis le serveur :
+   ```bash
+   docker compose exec backend python -m app.outils appareils             # liste des demandes
+   docker compose exec backend python -m app.outils approuver POSTE-DE    # code affiché
+   ```
+3. Se reconnecter, puis tester les routes. L'agent de démonstration est **administrateur** : il peut créer des agents (`POST /agents`) et approuver les téléphones (`POST /appareils/{code}/approuver`).
+
+Règles de connexion (phase 1 bis) :
+- jeton d'accès de 15 minutes, renouvelé automatiquement par l'application (jeton de renouvellement valable 30 jours, changé à chaque usage) ;
+- blocage de 15 minutes après 5 mots de passe faux ;
+- mot de passe provisoire à changer à la première connexion ;
+- suspendre un agent ou révoquer un appareil coupe ses sessions immédiatement.
+
+Pour retrouver l'accès si l'administrateur est bloqué : `docker compose exec backend python -m app.outils reinitialiser AG-0001`.
 
 ## Lancer les tests
 
@@ -87,6 +104,7 @@ Ces routes demandent que le matcher soit démarré. Le téléphone envoie les d�
 1. Sur le PC : `docker compose up` (backend, base, matcher), puis `docker compose exec backend python -m app.seed --reset` pour les fiches fictives.
 2. Téléphone et PC sur le **même Wi-Fi**. Installer la version de débogage : `flutter run` dans `mobile/`. Elle seule autorise le HTTP non chiffré vers le PC.
 3. Dans l'application : saisir l'adresse du PC (ex. `http://192.168.1.10:8000`), puis le matricule et le mot de passe de l'agent de démonstration.
+   La première fois, l'application affiche le **code du téléphone** : l'approuver avec `docker compose exec backend python -m app.outils approuver <code>`, puis se reconnecter.
 4. **Enregistrer une personne** : identité, domicile et signalement, photo et signature, 10 empreintes, puis récapitulatif. L'envoi fait le contrôle anti-doublon **avant** d'attribuer le numéro.
 5. **Identifier une personne** : choisir la main, puis scanner.
 6. **Compléter les empreintes d'une fiche** : pour une fiche fictive déjà en base (données de démonstration).

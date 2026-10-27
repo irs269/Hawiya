@@ -13,7 +13,7 @@ from app.biometrie.client_matcher import Candidat, ErreurMatcher
 from app.main import app
 from app.models import Empreinte, JournalAction
 from app.routers.biometrie import get_client_matcher
-from tests.conftest import MOT_DE_PASSE_TEST
+from tests.conftest import connecter, entetes_de
 
 
 class FauxMatcher:
@@ -141,8 +141,7 @@ def test_doublon_possible_valide_par_un_superviseur(client, enroler, creer_citoy
     assert enroler(b["numero"], personne=2, validation_superviseur=True).status_code == 403
 
     superviseur = creer_agent(matricule="AG-SUP", role="superviseur")
-    jeton = client.post("/auth/connexion", data={"username": superviseur.matricule, "password": MOT_DE_PASSE_TEST})
-    entetes_sup = {"Authorization": f"Bearer {jeton.json()['access_token']}"}
+    entetes_sup = entetes_de(connecter(client, superviseur.matricule))
     reponse = client.put(
         f"/citoyens/{b['numero']}/empreintes",
         json={"doigts": main(2), "validation_superviseur": True},

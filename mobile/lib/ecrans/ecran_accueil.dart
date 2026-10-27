@@ -14,6 +14,7 @@ import '../theme/couleurs.dart';
 import 'communs.dart';
 import 'ecran_enregistrement.dart';
 import 'ecran_identification.dart';
+import 'ecran_mot_de_passe.dart';
 
 /// Accueil de l'agent connecté : parcours, enregistrements en attente,
 /// synchronisation automatique au retour du réseau.
@@ -86,6 +87,19 @@ class _EcranAccueilState extends State<EcranAccueil> {
     }
   }
 
+  Future<void> _changerMotDePasse() async {
+    final nouveau = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => EcranMotDePasse(api: widget.api, matricule: widget.agent.matricule)),
+    );
+    if (nouveau == null || !mounted) return;
+    // La connexion hors ligne suit le nouveau mot de passe.
+    await widget.services.identifiants.memoriser(widget.agent.matricule, nouveau, agent: widget.agent, adresse: widget.api.adresse);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mot de passe changé.')));
+    }
+  }
+
   Future<void> _ouvrir(Widget ecran) async {
     await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => ecran));
     if (mounted) await _synchroniser(silencieux: true);
@@ -98,12 +112,19 @@ class _EcranAccueilState extends State<EcranAccueil> {
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: barreHawiya('Hawiya', actions: [
+          if (_enLigne)
+            IconButton(
+              tooltip: 'Changer mon mot de passe',
+              icon: const Icon(Icons.key_outlined),
+              onPressed: _changerMotDePasse,
+            ),
           IconButton(
             tooltip: 'Se déconnecter',
             icon: const Icon(Icons.logout),
-            onPressed: () {
-              widget.api.deconnexion();
-              Navigator.pop(context);
+            onPressed: () async {
+              // Révoque la session sur le serveur (les enregistrements en attente restent).
+              await widget.api.deconnexion();
+              if (context.mounted) Navigator.pop(context);
             },
           ),
         ]),

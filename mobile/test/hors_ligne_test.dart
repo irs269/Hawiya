@@ -115,17 +115,56 @@ void main() {
     test('reconnue après une connexion en ligne, sans garder le mot de passe', () async {
       final coffre = CoffreMemoire();
       final ids = IdentifiantsHorsLigne(coffre, iterations: 1000);
-      expect(await ids.verifier('AG-0001', 'secret-fictif'), isNull); // jamais connecté
+      expect((await ids.verifier('AG-0001', 'secret-fictif')).refus, RefusHorsLigne.inconnu); // jamais connecté
       await ids.memoriser('ag-0001', 'secret-fictif',
           agent: const AgentConnecte(matricule: 'AG-0001', nom: 'Agent fictif', role: 'superviseur'),
           adresse: 'http://192.168.1.10:8000');
 
       expect(coffre.valeurs.values.join(), isNot(contains('secret-fictif')));
-      final agent = await ids.verifier(' AG-0001 ', 'secret-fictif');
+      final agent = (await ids.verifier(' AG-0001 ', 'secret-fictif')).agent;
       expect(agent!.role, 'superviseur');
-      expect(await ids.verifier('AG-0001', 'faux'), isNull);
-      expect(await ids.verifier('AG-0002', 'secret-fictif'), isNull);
+      expect((await ids.verifier('AG-0001', 'faux')).refus, RefusHorsLigne.motDePasseIncorrect);
+      expect((await ids.verifier('AG-0002', 'secret-fictif')).refus, RefusHorsLigne.inconnu);
       expect(await ids.derniereAdresse(), 'http://192.168.1.10:8000');
+    });
+
+    test('plusieurs agents sur le même téléphone', () async {
+      final ids = IdentifiantsHorsLigne(CoffreMemoire(), iterations: 1000);
+      await ids.memoriser('AG-0001', 'secret-un-fictif');
+      await ids.memoriser('AG-0002', 'secret-deux-fictif');
+      expect((await ids.verifier('AG-0001', 'secret-un-fictif')).agent, isNotNull);
+      expect((await ids.verifier('AG-0002', 'secret-deux-fictif')).agent, isNotNull);
+      await ids.oublier('AG-0001');
+      expect((await ids.verifier('AG-0001', 'secret-un-fictif')).refus, RefusHorsLigne.inconnu);
+      expect((await ids.verifier('AG-0002', 'secret-deux-fictif')).agent, isNotNull);
+      await ids.oublierTout();
+      expect((await ids.verifier('AG-0002', 'secret-deux-fictif')).refus, RefusHorsLigne.inconnu);
+    });
+
+    test('blocage après 5 essais ratés, levé après 15 minutes', () async {
+      var maintenant = DateTime(2026, 10, 27, 9);
+      final ids = IdentifiantsHorsLigne(CoffreMemoire(), iterations: 1000, horloge: () => maintenant);
+      await ids.memoriser('AG-0001', 'secret-fictif');
+      for (var i = 0; i < 4; i++) {
+        expect((await ids.verifier('AG-0001', 'faux')).refus, RefusHorsLigne.motDePasseIncorrect);
+      }
+      expect((await ids.verifier('AG-0001', 'faux')).refus, RefusHorsLigne.bloque);
+      // Même le bon mot de passe est refusé pendant le blocage.
+      expect((await ids.verifier('AG-0001', 'secret-fictif')).refus, RefusHorsLigne.bloque);
+      maintenant = maintenant.add(const Duration(minutes: 16));
+      expect((await ids.verifier('AG-0001', 'secret-fictif')).agent, isNotNull);
+    });
+
+    test('validité de 7 jours depuis la dernière connexion en ligne', () async {
+      var maintenant = DateTime(2026, 10, 1);
+      final ids = IdentifiantsHorsLigne(CoffreMemoire(), iterations: 1000, horloge: () => maintenant);
+      await ids.memoriser('AG-0001', 'secret-fictif');
+      maintenant = maintenant.add(const Duration(days: 6, hours: 23));
+      expect((await ids.verifier('AG-0001', 'secret-fictif')).agent, isNotNull);
+      maintenant = maintenant.add(const Duration(hours: 2));
+      final r = await ids.verifier('AG-0001', 'secret-fictif');
+      expect(r.refus, RefusHorsLigne.expire);
+      expect(r.message, contains('7 jours'));
     });
   });
 

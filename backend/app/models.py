@@ -9,6 +9,7 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -31,6 +32,7 @@ from app.referentiels import (
     ILES,
     ROLES_AGENT,
     SEXES,
+    STATUTS_APPAREIL,
     STATUTS_AGENT,
     TAILLE_MAX_CM,
     TAILLE_MIN_CM,
@@ -41,8 +43,8 @@ from app.referentiels import (
 class Agent(Base):
     """Agent qui enregistre et identifie des citoyens.
 
-    Phase 1 : authentification provisoire (matricule + mot de passe).
-    Les rôles, zones et statuts serviront à la phase 1 bis.
+    Rôles : agent (enregistre, identifie), superviseur (valide les doublons,
+    approuve les téléphones), administrateur (gère aussi les agents).
     """
 
     __tablename__ = "agents"
@@ -57,11 +59,63 @@ class Agent(Base):
     statut: Mapped[str] = mapped_column(String(20), default="actif", server_default="actif")
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    # Blocage après des échecs de connexion consécutifs.
+    echecs_connexion: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")
+    bloque_jusqu_a: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Mot de passe provisoire (création, réinitialisation) : à changer avant toute action.
+    doit_changer_mot_de_passe: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    mot_de_passe_change_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     __table_args__ = (
         CheckConstraint(condition_sql_in("role", ROLES_AGENT), name="role"),
         CheckConstraint(condition_sql_in("statut", STATUTS_AGENT), name="statut"),
         CheckConstraint("ile IS NULL OR " + condition_sql_in("ile", ILES), name="ile"),
     )
+
+
+class Appareil(Base):
+    """Téléphone (ou poste) autorisé à se connecter. Un nouvel appareil reste
+    « en_attente » tant qu'un superviseur ne l'a pas approuvé ; un appareil
+    perdu est « revoque » (ses sessions sont coupées)."""
+
+    __tablename__ = "appareils"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    # Identifiant aléatoire généré par l'appareil lui-même (gardé dans son coffre).
+    identifiant: Mapped[str] = mapped_column(String(64), unique=True)
+    nom: Mapped[str | None] = mapped_column(String(100))
+    statut: Mapped[str] = mapped_column(String(20), default="en_attente", server_default="en_attente")
+    # Agent qui a fait la première demande de connexion depuis cet appareil.
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agents.id", ondelete="SET NULL"), index=True)
+    approuve_par: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agents.id", ondelete="SET NULL"))
+    approuve_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    derniere_connexion: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (CheckConstraint(condition_sql_in("statut", STATUTS_APPAREIL), name="statut"),)
+
+    @property
+    def code(self) -> str:
+        """Code court lu à voix haute ou recopié par le superviseur."""
+        return self.identifiant[:8].upper()
+
+
+class SessionAgent(Base):
+    """Jeton de renouvellement (enregistré HACHÉ). À chaque renouvellement, le
+    jeton est marqué « utilisé » et un nouveau est créé dans la même famille.
+    Un jeton déjà utilisé qui revient = vol probable : toute la famille est révoquée."""
+
+    __tablename__ = "sessions_agents"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), index=True)
+    appareil_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("appareils.id", ondelete="CASCADE"), index=True)
+    famille: Mapped[uuid.UUID] = mapped_column(Uuid, index=True)
+    hash_jeton: Mapped[str] = mapped_column(String(64), unique=True)
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expire_le: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    utilise_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoque_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Citoyen(Base):

@@ -54,14 +54,15 @@ void main() {
     final coffre = CoffreMemoire();
     await IdentifiantsHorsLigne(coffre, iterations: 1000).memoriser('AG-0001', 'mot-de-passe-fictif', agent: agentFictif);
     final services = servicesDeTest(coffre: coffre);
-    ClientApi sansReseau(String adresse) =>
+    ClientApi sansReseau(String adresse, {required String identifiantAppareil, Future<void> Function(String?)? surRenouvellement}) =>
         ClientApi(adresse, client: MockClient((_) async => throw http.ClientException('pas de réseau')));
 
     await ouvrir(tester, EcranConnexion(services: services, fabriqueClient: sansReseau));
+    await tester.pumpAndSettle(); // fin de la tentative de reprise de session
     await tester.enterText(find.widgetWithText(TextField, 'Matricule agent'), 'AG-0001');
     await tester.enterText(find.widgetWithText(TextField, 'Mot de passe'), 'faux');
     await toucher(tester, 'Se connecter');
-    expect(find.textContaining('Serveur injoignable'), findsOneWidget);
+    expect(find.textContaining('mot de passe incorrect'), findsOneWidget);
 
     await tester.enterText(find.widgetWithText(TextField, 'Mot de passe'), 'mot-de-passe-fictif');
     await toucher(tester, 'Se connecter');
