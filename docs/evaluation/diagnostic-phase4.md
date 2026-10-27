@@ -64,3 +64,19 @@ docker compose run --rm -v ./captures:/captures:ro -v ./docs:/docs backend \
 ```
 
 **Critère de décision** : garder le déroulage si l'EER doigt et le d' s'améliorent par rapport à la même variante sans déroulage, et si la majorité des découpes utilise la silhouette (sinon, revoir la détection des bords avant de conclure).
+
+## Règle de décision : ne jamais afficher la fiche d'une autre personne
+
+> Code : `backend/app/biometrie/decision.py` (testé sur des scores fictifs). Pas encore branché sur une route d'API : il n'existe pas encore de route d'identification.
+
+Aucun système biométrique n'est exact à 100 %. L'objectif retenu est qu'il n'y ait **aucune erreur de personne** : en cas de doute, l'application répond « non concluant » (nouveau scan, puis vérification manuelle sur pièce d'identité) au lieu de deviner.
+
+| Réponse | Conditions (4 doigts ; seuils proportionnels au nombre de doigts) |
+|---|---|
+| **Identifié** | TOUTES à la fois : score de la main ≥ 120 ; au moins 3 doigts « concordants » (meilleur de tous les candidats pour ce doigt et score ≥ 25) ; écart avec le 2e candidat ≥ 50 et score ≥ 1,8 × le sien |
+| **Personne non enregistrée** | score du 1er candidat < 60 ET aucun doigt, chez aucun candidat, ≥ 35 |
+| **Non concluant** | tout le reste, ou moins de 3 doigts exploitables |
+
+- **Plusieurs scans** : on garde, pour chaque candidat, le meilleur score de chaque doigt. Si deux scans désignent chacun une personne différente, la réponse est forcément « non concluant » avec vérification manuelle.
+- **Anti-doublon à l'enregistrement** : « doublon certain » avec les mêmes critères que l'identification ; « doublon possible » au moindre indice (score de la main ≥ 15 par doigt, un doigt ≥ 35, ou deux doigts ≥ 25). L'enregistrement attend alors la validation d'un superviseur.
+- **Seuils provisoires**, tirés du premier signal sur une seule personne : authentiques de la main 130 à 213, imposteurs ≤ 55. Ils sont réglables (`Seuils`) et devront être recalés sur une évaluation avec plusieurs personnes. Avec les captures actuelles, une partie des scans authentiques tombera en « non concluant » : c'est le prix de l'absence d'erreur de personne.
