@@ -38,3 +38,29 @@ Défauts de prétraitement corrigés pendant ce diagnostic :
 3. **Correction de la courbure du doigt** (modèle cylindrique) avant SourceAFIS.
 4. **Moteur conçu pour le sans-contact** (SDK commercial) : à évaluer avec le même outil.
 5. **Recentrer l'usage** : vérification 1:1 (« est-ce bien cette personne ? ») plutôt qu'identification 1:N.
+
+## Levier 3 : déroulage cylindrique du doigt (code prêt, gain NON mesuré)
+
+> Codé et testé sur des doigts synthétiques uniquement (27/10/2026). Les captures réelles ne sont pas dans le dépôt : le gain doit être mesuré sur le poste qui les détient.
+
+**Principe.** Le doigt est vu comme un cylindre d'axe vertical. Sur la photo, un point de la peau situé à l'angle θ du sommet apparaît à `x = centre + R·sin θ`. Les bords sont donc comprimés : à 50°, l'espacement des crêtes vaut 0,64 fois celui du centre. Le déroulage reconstruit la peau « à plat » : la colonne de sortie correspond à la longueur d'arc `R·θ`. Le centre de la pulpe garde son échelle, donc la mise à l'échelle 500 dpi reste valable.
+
+- **Centre et rayon, ligne par ligne**, d'après la silhouette du doigt sur la photo brute : sous le flash, le doigt est clair et le fond sombre. Vers le bout, le rayon diminue, ce qui approche un bout arrondi.
+- **Repli** si la silhouette n'est pas crédible (pas de fond visible, contraste faible, largeur aberrante) : on suppose que le doigt occupe la découpe moins la marge de 15 %.
+- Au-delà de **65°**, la peau est vue trop en biais : elle est masquée.
+- Variantes ajoutées : `gabor_inverse_deroule` et `simple_inverse_deroule`. L'outil affiche combien de découpes ont utilisé la silhouette ou la largeur supposée.
+
+**Mesure à faire** (matcher démarré, captures dans `./captures/s23ultra`) :
+
+```
+docker compose run --rm -v ./captures:/captures:ro -v ./docs:/docs backend \
+    python -m evaluation.evaluer --captures /captures/s23ultra --multi-echelle \
+    --nettete-min 0.04 --variantes simple_inverse,simple_inverse_deroule,gabor_inverse,gabor_inverse_deroule \
+    --sortie /docs/evaluation/deroulage-nettes --titre "Levier 3 : déroulage"
+
+docker compose run --rm -v ./captures:/captures:ro -v ./docs:/docs backend \
+    python -m evaluation.simulation_enrolement --captures /captures/s23ultra --multi-echelle \
+    --nettete-min 0.04 --variante simple_inverse_deroule --sortie /docs/evaluation/simulation-deroulage-nettes
+```
+
+**Critère de décision** : garder le déroulage si l'EER doigt et le d' s'améliorent par rapport à la même variante sans déroulage, et si la majorité des découpes utilise la silhouette (sinon, revoir la détection des bords avant de conclure).

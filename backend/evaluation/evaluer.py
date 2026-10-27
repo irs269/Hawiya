@@ -101,9 +101,12 @@ def evaluer_variante(
     variantes_echelle: list[list[bytes]] = []
     gardes: list[Echantillon] = []
     echecs = 0
+    bords: dict[str, int] = defaultdict(int)  # déroulage : silhouette vue ou largeur supposée
     for e in echantillons:
         try:
             r = pretraiter(decoder_image(e.fichier.read_bytes()), e.dpi, variante)
+            if r.deroulage:
+                bords[r.deroulage] += 1
             modele, _ = client.modele(encoder_png(r.image), r.dpi)
             autres = []
             if multi_echelle:
@@ -119,6 +122,8 @@ def evaluer_variante(
         variantes_echelle.append(autres)
         gardes.append(e)
 
+    if bords:
+        print(f"   déroulage : {dict(bords)}")
     n = len(modeles)
     tous = modeles + [m for autres in variantes_echelle for m in autres]
     brute = np.array(client.matrice(tous), dtype=float)
