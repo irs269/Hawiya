@@ -102,8 +102,13 @@ Ces routes demandent que le matcher soit démarré. Le téléphone envoie les d�
 ### Démo avec l'application mobile
 
 1. Sur le PC : `docker compose up` (backend, base, matcher), puis `docker compose exec backend python -m app.seed --reset` pour les fiches fictives.
-2. Téléphone et PC sur le **même Wi-Fi**. Installer la version de débogage : `flutter run` dans `mobile/`. Elle seule autorise le HTTP non chiffré vers le PC.
-3. Dans l'application : saisir l'adresse du PC (ex. `http://192.168.1.10:8000`), puis le matricule et le mot de passe de l'agent de démonstration.
+2. Relier le téléphone au PC par **câble USB** (débogage USB activé), puis :
+   ```bash
+   adb reverse tcp:8000 tcp:8000   # localhost:8000 sur le téléphone → serveur du PC
+   cd mobile && flutter run         # version de débogage (seule à accepter le HTTP non chiffré)
+   ```
+   Le serveur n'écoute que sur le PC lui-même (`127.0.0.1:8000`) : rien n'est exposé sur le Wi-Fi. `adb reverse` est à refaire après chaque débranchement du câble.
+3. Dans l'application : adresse `http://localhost:8000`, puis le matricule et le mot de passe de l'agent de démonstration.
    La première fois, l'application affiche le **code du téléphone** : l'approuver avec `docker compose exec backend python -m app.outils approuver <code>`, puis se reconnecter.
 4. **Enregistrer une personne** : identité, domicile et signalement, photo et signature, 10 empreintes, puis récapitulatif. L'envoi fait le contrôle anti-doublon **avant** d'attribuer le numéro.
 5. **Identifier une personne** : choisir la main, puis scanner.

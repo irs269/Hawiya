@@ -38,8 +38,9 @@ class EcranConnexion extends StatefulWidget {
 }
 
 class _EcranConnexionState extends State<EcranConnexion> {
-  // Adresse du PC qui fait tourner docker compose, sur le même Wi-Fi.
-  final _adresse = TextEditingController(text: 'http://192.168.1.10:8000');
+  // Démo : téléphone relié au PC par câble USB avec « adb reverse tcp:8000 tcp:8000 » :
+  // localhost:8000 sur le téléphone mène au serveur du PC (rien n'est exposé sur le Wi-Fi).
+  final _adresse = TextEditingController(text: 'http://localhost:8000');
   final _matricule = TextEditingController();
   final _motDePasse = TextEditingController();
   bool _enCours = false;
@@ -199,7 +200,7 @@ class _EcranConnexionState extends State<EcranConnexion> {
                   keyboardType: TextInputType.url,
                   decoration: const InputDecoration(
                     labelText: 'Adresse du serveur',
-                    helperText: 'Ex. http://192.168.1.10:8000 (PC sur le même Wi-Fi)',
+                    helperText: 'Câble USB + adb reverse : http://localhost:8000',
                   ),
                 ),
                 if (_codeAttente != null) ...[
