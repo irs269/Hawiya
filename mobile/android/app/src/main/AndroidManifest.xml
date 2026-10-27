@@ -1,12 +1,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Envoi des empreintes au serveur Hawiya -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Caméra arrière + flash pour filmer la main -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="true" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="true" />
     <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
 
+    <!-- allowBackup="false" : les enregistrements en attente (chiffrés) ne
+         partent pas dans les sauvegardes Android / cloud. -->
     <application
+        android:allowBackup="false"
+        android:fullBackupContent="false"
         android:label="Hawiya"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"

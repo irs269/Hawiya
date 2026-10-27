@@ -13,11 +13,25 @@ from sqlalchemy.orm import sessionmaker
 from app.config import parametres
 from app.db import get_db
 from app.main import app
-from app.models import Agent
+from app.models import Agent, Appareil
 from app.securite import hacher_mot_de_passe
 
 DOSSIER_BACKEND = Path(__file__).resolve().parents[1]
 MOT_DE_PASSE_TEST = "mot-de-passe-de-test"  # valeur de test, sans rapport avec .env
+APPAREIL_TEST = "appareil-de-test-0001"  # identifiant d'un appareil approuvé par la fixture
+
+
+def connecter(client, matricule, mot_de_passe=MOT_DE_PASSE_TEST, appareil=APPAREIL_TEST):
+    """POST /auth/connexion comme le fait l'application (client_id = appareil)."""
+    donnees = {"username": matricule, "password": mot_de_passe}
+    if appareil is not None:
+        donnees["client_id"] = appareil
+    return client.post("/auth/connexion", data=donnees)
+
+
+def entetes_de(reponse) -> dict:
+    assert reponse.status_code == 200, reponse.text
+    return {"Authorization": f"Bearer {reponse.json()['access_token']}"}
 
 # Données FICTIVES réutilisées par les tests.
 CITOYEN_FICTIF = {
@@ -77,7 +91,7 @@ def fabrique_sessions(moteur):
     with moteur.begin() as connexion:
         connexion.execute(
             text(
-                "TRUNCATE journal_actions, empreintes, citoyens_medias, citoyens, "
+                "TRUNCATE journal_actions, sessions_agents, appareils, empreintes, citoyens_medias, citoyens, "
                 "agents, compteurs_numero RESTART IDENTITY CASCADE"
             )
         )
@@ -126,13 +140,18 @@ def agent(creer_agent):
 
 
 @pytest.fixture
-def entetes(client, agent):
-    """En-têtes HTTP d'un agent connecté."""
-    reponse = client.post(
-        "/auth/connexion", data={"username": agent.matricule, "password": MOT_DE_PASSE_TEST}
-    )
-    assert reponse.status_code == 200, reponse.text
-    return {"Authorization": f"Bearer {reponse.json()['access_token']}"}
+def appareil(db):
+    """Appareil déjà approuvé (APPAREIL_TEST)."""
+    appareil = Appareil(identifiant=APPAREIL_TEST, nom="Téléphone de test", statut="approuve")
+    db.add(appareil)
+    db.commit()
+    return appareil
+
+
+@pytest.fixture
+def entetes(client, agent, appareil):
+    """En-têtes HTTP d'un agent connecté depuis l'appareil approuvé."""
+    return entetes_de(connecter(client, agent.matricule))
 
 
 @pytest.fixture

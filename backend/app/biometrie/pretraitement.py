@@ -9,6 +9,7 @@ les variantes et retient la meilleure SUR LES MESURES, pas au jugé.
   1. niveaux de gris (luminance ou canal vert) ;
   2. masque du doigt (le fond est neutralisé) ;
   3. correction de l'éclairage + CLAHE ;
+  3 bis. « déroulage » cylindrique du doigt, facultatif (voir derouler) ;
   4. mesure de l'espacement réel des crêtes (spectre de Fourier) et mise à
      l'échelle pour qu'il vaille celui d'une empreinte à 500 dpi ;
   5. renforcement des crêtes (filtres de Gabor orientés), facultatif ;
@@ -35,6 +36,7 @@ class Variante:
     gabor: bool = True
     inverser: bool = True  # vrai = les crêtes claires de la photo deviennent sombres
     echelle: str = "cretes"  # « cretes » (espacement mesuré) ou « largeur » (doigt de 18 mm)
+    deroulage: bool = False  # vrai = correction de la courbure du doigt (modèle cylindrique)
 
 
 # Variantes évaluées par défaut (la première est la référence).
@@ -45,7 +47,17 @@ VARIANTES = [
     Variante("simple_direct", gabor=False, inverser=False),
     Variante("gabor_inverse_vert", canal="vert"),
     Variante("gabor_inverse_largeur", echelle="largeur"),
+    # Levier 3 : mêmes réglages que les meilleures variantes, avec déroulage.
+    Variante("gabor_inverse_deroule", deroulage=True),
+    Variante("simple_inverse_deroule", gabor=False, deroulage=True),
 ]
+
+# Déroulage : la découpe du téléphone est agrandie de 15 % autour du doigt
+# (AGRANDISSEMENT de CaptureRafale.kt) → demi-largeur du doigt ≈ 0,435 × largeur.
+DEMI_LARGEUR_SUPPOSEE = 0.5 / 1.15
+# Au-delà de cet angle sur le cylindre, la peau est vue trop en biais (compression
+# cos 65° ≈ 0,42) : les crêtes ne sont plus lisibles, on coupe.
+ANGLE_MAX_DEROULAGE = np.deg2rad(65)
 
 
 @dataclass
@@ -54,6 +66,9 @@ class Resultat:
     dpi: int
     periode_mesuree_px: float | None  # dans la découpe d'origine
     facteur_echelle: float
+    # Bords du doigt utilisés pour le déroulage : « silhouette » (vus sur la
+    # photo), « supposee » (largeur supposée) ou None (pas de déroulage).
+    deroulage: str | None = None
 
 
 def niveaux_de_gris(image_bgr: np.ndarray, canal: str) -> np.ndarray:
@@ -74,6 +89,107 @@ def masque_doigt(hauteur: int, largeur: int) -> np.ndarray:
     cv2.rectangle(masque, (cx - demi_largeur, haut_arrondi), (cx + demi_largeur, hauteur - 1), 255, -1)
     cv2.ellipse(masque, (cx, haut_arrondi), (demi_largeur, demi_largeur), 0, 180, 360, 255, -1)
     return masque > 0
+
+
+def lisser(valeurs: np.ndarray, fenetre: int) -> np.ndarray:
+    """Médiane glissante (impaire), bords répétés : retire les à-coups ligne à ligne."""
+    demi = fenetre // 2
+    etendu = np.pad(valeurs, demi, mode="edge")
+    return np.median(np.lib.stride_tricks.sliding_window_view(etendu, 2 * demi + 1), axis=1)
+
+
+def bords_par_ligne(masque: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Centre et demi-largeur du masque, ligne par ligne (demi-largeur 0 si ligne vide)."""
+    h, w = masque.shape
+    presents = masque.any(axis=1)
+    gauche = np.where(presents, np.argmax(masque, axis=1), 0)
+    droite = np.where(presents, w - 1 - np.argmax(masque[:, ::-1], axis=1), 0)
+    centre = np.where(presents, (gauche + droite) / 2, w / 2).astype(np.float64)
+    demi = np.where(presents, (droite - gauche + 1) / 2, 0).astype(np.float64)
+    return centre, demi
+
+
+def silhouette_doigt(gris: np.ndarray) -> np.ndarray | None:
+    """Silhouette du doigt sur la photo BRUTE : sous le flash, le doigt (proche)
+    est nettement plus clair que le fond (loin). Seuil d'Otsu sur l'image floutée,
+    zone d'un seul tenant qui contient le centre de la pulpe.
+
+    None si la silhouette n'est pas crédible : pas de fond visible (le doigt
+    remplit la découpe), contraste trop faible, ou largeur hors de 60 à 100 %
+    de la largeur attendue."""
+    h, w = gris.shape
+    flou = cv2.GaussianBlur(gris, (0, 0), sigmaX=max(2.0, w / 40))
+    flou8 = np.clip(flou, 0, 255).astype(np.uint8)
+    seuil, binaire = cv2.threshold(flou8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    clair = binaire > 0
+    cy, cx = int(h * 0.45), w // 2
+    doigt = clair if clair[cy, cx] else ~clair
+    dedans, dehors = flou[doigt], flou[~doigt]
+    if dehors.size < 0.05 * h * w or abs(dedans.mean() - dehors.mean()) < 15:
+        return None
+    _, etiquettes = cv2.connectedComponents(doigt.astype(np.uint8))
+    doigt = etiquettes == etiquettes[cy, cx]
+    # Contrôle sur le corps du doigt (moitié basse), plus régulier que le bout arrondi.
+    _, demi = bords_par_ligne(doigt[h // 2 :])
+    touche_les_deux_bords = doigt[h // 2 :, 0] & doigt[h // 2 :, -1]
+    if touche_les_deux_bords.mean() > 0.5:
+        return None
+    rapport = np.median(demi) / (DEMI_LARGEUR_SUPPOSEE * w)
+    if not 0.6 <= rapport <= 1.0:
+        return None
+    return doigt
+
+
+def derouler(
+    gris: np.ndarray, masque: np.ndarray, contour: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Correction de la courbure : le doigt est vu comme un cylindre (axe vertical).
+
+    Sur la photo, un point de la peau à l'angle θ du sommet apparaît à
+    x = centre + R·sin θ : les bords sont comprimés (à 60°, de moitié). On
+    reconstruit la peau « à plat » : la colonne de sortie correspond à la
+    longueur d'arc s = R·θ, et on va chercher le pixel x = centre + R·sin(s/R).
+    Le centre de la pulpe garde son échelle (sin θ ≈ θ), donc la mise à
+    l'échelle 500 dpi qui suit reste valable.
+
+    R et le centre sont pris ligne par ligne dans `contour` (silhouette du
+    doigt) : vers le bout arrondi, R diminue, ce qui approche un bout en
+    forme de demi-sphère. Pas de cisaillement : le centre de chaque ligne
+    reste à sa place, la sortie est seulement élargie des deux côtés.
+    Au-delà de ANGLE_MAX_DEROULAGE, la peau est masquée.
+    """
+    h, w = gris.shape
+    centre, rayon = bords_par_ligne(contour)
+    fenetre = max(3, h // 15) | 1
+    centre, rayon = lisser(centre, fenetre), lisser(rayon, fenetre)
+    rayon_max = float(rayon.max())
+    if rayon_max < 4:
+        return gris, masque
+    marge = int(np.ceil(rayon_max * (ANGLE_MAX_DEROULAGE - np.sin(ANGLE_MAX_DEROULAGE)))) + 2
+    largeur_sortie = w + 2 * marge
+
+    x_sortie = np.arange(largeur_sortie, dtype=np.float64)[None, :]
+    s = x_sortie - marge - centre[:, None]  # longueur d'arc depuis le sommet
+    r = np.maximum(rayon[:, None], 1e-6)
+    theta = s / r
+    valide = (np.abs(theta) <= ANGLE_MAX_DEROULAGE) & (rayon[:, None] >= 2)
+    carte_x = (centre[:, None] + r * np.sin(np.clip(theta, -np.pi / 2, np.pi / 2))).astype(np.float32)
+    carte_y = np.repeat(np.arange(h, dtype=np.float32)[:, None], largeur_sortie, axis=1)
+
+    sortie = cv2.remap(gris.astype(np.float32), carte_x, carte_y, cv2.INTER_LINEAR, borderValue=0)
+    masque_sortie = cv2.remap(masque.astype(np.uint8), carte_x, carte_y, cv2.INTER_NEAREST, borderValue=0) > 0
+    masque_sortie &= valide
+    sortie[~masque_sortie] = 0
+    return sortie, masque_sortie
+
+
+def contour_suppose(masque_geometrique: np.ndarray) -> np.ndarray:
+    """Silhouette de repli : le masque géométrique élargi à la demi-largeur supposée."""
+    h, w = masque_geometrique.shape
+    centre, demi = bords_par_ligne(masque_geometrique)
+    demi = demi * (DEMI_LARGEUR_SUPPOSEE * w) / max(float(demi.max()), 1.0)
+    colonnes = np.arange(w)[None, :]
+    return (np.abs(colonnes - centre[:, None]) <= demi[:, None]) & (demi[:, None] > 0)
 
 
 def mesurer_periode(gris: np.ndarray, periode_attendue: float) -> float | None:
@@ -189,6 +305,9 @@ def pretraiter(image_bgr: np.ndarray, dpi_estime: float, variante: Variante = VA
     gris = niveaux_de_gris(image_bgr, variante.canal)
     h, w = gris.shape
     masque = masque_doigt(h, w)
+    # Silhouette cherchée sur la photo brute, avant la correction d'éclairage
+    # qui efface justement la différence doigt / fond.
+    contour = silhouette_doigt(gris) if variante.deroulage else None
 
     # 3. Éclairage : on retire les variations lentes (ombres, courbure du doigt).
     periode_estimee = ECART_CRETES_MM / 25.4 * dpi_estime
@@ -199,6 +318,15 @@ def pretraiter(image_bgr: np.ndarray, dpi_estime: float, variante: Variante = VA
     if variante.clahe:
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         gris = clahe.apply(gris.astype(np.uint8)).astype(np.float32)
+
+    # 3 bis. Déroulage cylindrique (la largeur w change, h non).
+    deroulage = None
+    if variante.deroulage:
+        deroulage = "silhouette" if contour is not None else "supposee"
+        if contour is None:
+            contour = contour_suppose(masque)
+        gris, masque = derouler(gris, masque & contour, contour)
+        w = gris.shape[1]
 
     # 4. Mise à l'échelle 500 dpi.
     periode = mesurer_periode(gris, periode_estimee)
@@ -227,6 +355,7 @@ def pretraiter(image_bgr: np.ndarray, dpi_estime: float, variante: Variante = VA
         dpi=DPI_SORTIE,
         periode_mesuree_px=periode,
         facteur_echelle=facteur,
+        deroulage=deroulage,
     )
 
 

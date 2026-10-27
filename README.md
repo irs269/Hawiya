@@ -39,9 +39,26 @@ docker compose exec backend python -m app.seed
 
 ### Se connecter dans /docs
 
-1. Cliquer sur **Authorize**.
-2. `username` = `SEED_AGENT_MATRICULE` (par défaut `AG-0001`), `password` = `SEED_AGENT_MOT_DE_PASSE` (voir `.env`).
-3. Tester `POST /citoyens`, `GET /citoyens`, `GET /citoyens/{numero}` et `GET /statistiques`.
+Chaque appareil (téléphone ou poste) doit être **approuvé** avant de pouvoir se connecter.
+
+1. Cliquer sur **Authorize** et saisir :
+   - `username` = `SEED_AGENT_MATRICULE` (par défaut `AG-0001`) ;
+   - `password` = `SEED_AGENT_MOT_DE_PASSE` (voir `.env`) ;
+   - `client_id` = un identifiant pour ce poste, par exemple `poste-demo-0001` (8 caractères au moins).
+2. La première fois, la réponse est « appareil en attente », avec un code. Approuver ce poste depuis le serveur :
+   ```bash
+   docker compose exec backend python -m app.outils appareils             # liste des demandes
+   docker compose exec backend python -m app.outils approuver POSTE-DE    # code affiché
+   ```
+3. Se reconnecter, puis tester les routes. L'agent de démonstration est **administrateur** : il peut créer des agents (`POST /agents`) et approuver les téléphones (`POST /appareils/{code}/approuver`).
+
+Règles de connexion (phase 1 bis) :
+- jeton d'accès de 15 minutes, renouvelé automatiquement par l'application (jeton de renouvellement valable 30 jours, changé à chaque usage) ;
+- blocage de 15 minutes après 5 mots de passe faux ;
+- mot de passe provisoire à changer à la première connexion ;
+- suspendre un agent ou révoquer un appareil coupe ses sessions immédiatement.
+
+Pour retrouver l'accès si l'administrateur est bloqué : `docker compose exec backend python -m app.outils reinitialiser AG-0001`.
 
 ## Lancer les tests
 
@@ -69,6 +86,37 @@ Format **provisoire** : `KM-AAAA-NNNNNN-L`. Exemple : `KM-2026-000042-X`.
 - `L` : lettre de contrôle (modulo 23)
 
 Le numéro est attribué par le serveur uniquement. Le format est défini dans un seul fichier, [`backend/app/numero.py`](backend/app/numero.py), pour pouvoir adopter le format officiel quand l'État le fixera.
+
+## Empreintes et identification (API)
+
+Ces routes demandent que le matcher soit démarré. Le téléphone envoie les découpes des bouts de doigts, encodées en base64. Elles servent à calculer les modèles puis sont oubliées : **seuls les modèles sont enregistrés**.
+
+| Route | Rôle |
+|---|---|
+| `POST /doublons` | contrôle anti-doublon **avant** de créer la fiche (rien n'est enregistré) |
+| `PUT /citoyens/{numero}/empreintes` | enregistre les modèles. En cas de doublon certain ou possible : refus (409), sauf validation explicite d'un superviseur |
+| `PUT /citoyens/{numero}/medias` | photo du visage (JPEG/PNG) et signature (PNG), 2 Mo au plus |
+| `GET /citoyens/{numero}/photo` · `/signature` | relecture de la photo ou de la signature |
+| `POST /identification` | un à trois scans de la main → `identifie` (avec la fiche), `non_enregistre` ou `non_concluant` |
+
+### Démo avec l'application mobile
+
+1. Sur le PC : `docker compose up` (backend, base, matcher), puis `docker compose exec backend python -m app.seed --reset` pour les fiches fictives.
+2. Relier le téléphone au PC par **câble USB** (débogage USB activé), puis :
+   ```bash
+   adb reverse tcp:8000 tcp:8000   # localhost:8000 sur le téléphone → serveur du PC
+   cd mobile && flutter run         # version de débogage (seule à accepter le HTTP non chiffré)
+   ```
+   Le serveur n'écoute que sur le PC lui-même (`127.0.0.1:8000`) : rien n'est exposé sur le Wi-Fi. `adb reverse` est à refaire après chaque débranchement du câble.
+3. Dans l'application : adresse `http://localhost:8000`, puis le matricule et le mot de passe de l'agent de démonstration.
+   La première fois, l'application affiche le **code du téléphone** : l'approuver avec `docker compose exec backend python -m app.outils approuver <code>`, puis se reconnecter.
+4. **Enregistrer une personne** : identité, domicile et signalement, photo et signature, 10 empreintes, puis récapitulatif. L'envoi fait le contrôle anti-doublon **avant** d'attribuer le numéro.
+5. **Identifier une personne** : choisir la main, puis scanner.
+6. **Compléter les empreintes d'une fiche** : pour une fiche fictive déjà en base (données de démonstration).
+
+**Sans réseau** : après une première connexion en ligne, l'agent peut se connecter et enregistrer hors ligne. Les enregistrements sont gardés **chiffrés** sur le téléphone et envoyés automatiquement au retour du réseau. Voir [`docs/rapport-hors-ligne.md`](docs/rapport-hors-ligne.md).
+
+Règle : **ne jamais afficher la fiche d'une autre personne**. En cas de doute, la réponse est `non_concluant` : l'agent recommence le scan, puis passe à une vérification manuelle sur pièce d'identité. Conditions et seuils provisoires : [`docs/evaluation/diagnostic-phase4.md`](docs/evaluation/diagnostic-phase4.md).
 
 ## Règles du projet
 

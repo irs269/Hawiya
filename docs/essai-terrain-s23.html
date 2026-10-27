@@ -1,0 +1,382 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Essai Hawiya sur S23 Ultra</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Figtree:wght@400;600&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+  /* Mise en page : une colonne de lecture, sections numérotées (vrai ordre d'exécution),
+     chaque étape = attendu + état (OK / Problème) + note. Couleurs du CLAUDE.md. */
+  :root {
+    --fond: #F5F3EE;
+    --carte: #FFFFFF;
+    --texte: #14201C;
+    --discret: #5B6964;
+    --trait: #DCD8CE;
+    --vert: #0F5A45;
+    --vert-doux: #E3EEE9;
+    --dore: #A8720F;
+    --dore-doux: #F6ECD8;
+    --ok: #1F8A5F;
+    --ok-doux: #DDF5EA;
+    --probleme: #B3401F;
+    --probleme-doux: #F8E3DC;
+    --code: #EDEAE2;
+    --titre: "Fraunces", Georgia, "Times New Roman", serif;
+    --corps: "Figtree", "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --fond: #101915; --carte: #18241F; --texte: #E9EFEC; --discret: #9DB0A8; --trait: #2A3A33;
+      --vert: #5CC79C; --vert-doux: #1C3229; --dore: #E2AC4A; --dore-doux: #33291A;
+      --ok: #5CD69F; --ok-doux: #173326; --probleme: #F08A6A; --probleme-doux: #3A211A; --code: #22302A;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --fond: #101915; --carte: #18241F; --texte: #E9EFEC; --discret: #9DB0A8; --trait: #2A3A33;
+    --vert: #5CC79C; --vert-doux: #1C3229; --dore: #E2AC4A; --dore-doux: #33291A;
+    --ok: #5CD69F; --ok-doux: #173326; --probleme: #F08A6A; --probleme-doux: #3A211A; --code: #22302A;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--fond); color: var(--texte); font-family: var(--corps); font-size: 16px; line-height: 1.55;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 24px 64px;
+  }
+  .page { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+  h1, h2 { font-family: var(--titre); font-weight: 600; text-wrap: balance; margin: 0; }
+  h1 { font-size: clamp(1.8rem, 5vw, 2.4rem); line-height: 1.15; color: var(--vert); }
+  h2 { font-size: 1.35rem; line-height: 1.25; }
+  p { margin: 0; }
+  .chapeau { display: flex; flex-direction: column; gap: 10px; }
+  .chapeau p { color: var(--discret); max-width: 62ch; }
+  .etiquette { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dore); }
+
+  .regles { background: var(--dore-doux); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+  .regles strong { color: var(--dore); }
+  .regles ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+
+  .bilan { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--fond); padding-block: 10px; border-bottom: 1px solid var(--trait);
+           display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--fond); }
+  .jauge { flex: 1 1 200px; height: 8px; border-radius: 4px; background: var(--trait); overflow: hidden; display: flex; }
+  .jauge span { display: block; height: 100%; }
+  .jauge .j-ok { background: var(--ok); } .jauge .j-pb { background: var(--probleme); }
+  .chiffres { font-variant-numeric: tabular-nums; font-size: 0.92rem; color: var(--discret); }
+  .chiffres b { color: var(--texte); }
+
+  button { font: inherit; cursor: pointer; }
+  .btn { min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--vert); background: var(--vert); color: var(--fond); font-weight: 600; }
+  .btn.secondaire { background: transparent; color: var(--vert); }
+  .btn:focus-visible, .etat button:focus-visible, .copier:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid var(--dore); outline-offset: 2px; }
+
+  section.bloc { display: flex; flex-direction: column; gap: 12px; }
+  .bloc-entete { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .numero { font-family: var(--titre); font-size: 1.35rem; color: var(--dore); font-variant-numeric: tabular-nums; }
+  .bloc-entete .compte { margin-left: auto; font-size: 0.85rem; color: var(--discret); font-variant-numeric: tabular-nums; }
+  .bloc > p.intro { color: var(--discret); max-width: 62ch; }
+
+  .etape { background: var(--carte); border: 1px solid var(--trait); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .etape[data-etat="ok"] { border-left: 4px solid var(--ok); }
+  .etape[data-etat="probleme"] { border-left: 4px solid var(--probleme); }
+  .etape h3 { font-size: 1rem; font-weight: 600; margin: 0; }
+  .etape .attendu { font-size: 0.94rem; }
+  .etape .attendu b { color: var(--vert); font-weight: 600; }
+  .etape .detail { font-size: 0.94rem; color: var(--discret); }
+  .cmd { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
+  .cmd code { flex: 1 1 auto; min-width: 0; overflow-x: auto; white-space: pre; background: var(--code); border-radius: 8px; padding: 10px 12px; font-family: var(--mono); font-size: 0.85rem; }
+  .copier { min-height: 44px; min-width: 44px; border-radius: 8px; border: 1px solid var(--trait); background: transparent; color: var(--discret); font-size: 0.8rem; padding: 0 10px; }
+  .etat { display: flex; gap: 8px; flex-wrap: wrap; }
+  .etat button { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--trait); background: transparent; color: var(--texte); font-weight: 600; font-size: 0.9rem; }
+  .etat button[aria-pressed="true"].b-ok { background: var(--ok-doux); border-color: var(--ok); color: var(--ok); }
+  .etat button[aria-pressed="true"].b-pb { background: var(--probleme-doux); border-color: var(--probleme); color: var(--probleme); }
+  textarea { width: 100%; min-height: 64px; border-radius: 8px; border: 1px solid var(--trait); background: var(--fond); color: var(--texte); font: inherit; font-size: 0.92rem; padding: 8px 10px; resize: vertical; }
+
+  .fiche { background: var(--vert-doux); border-radius: 12px; padding: 14px 16px; }
+  .fiche dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 8px 0 0; font-size: 0.94rem; }
+  .fiche dt { color: var(--discret); } .fiche dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+  .fin { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--trait); padding-top: 20px; }
+  .fin .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  #rapport { min-height: 160px; font-family: var(--mono); font-size: 0.82rem; }
+  .discret { color: var(--discret); font-size: 0.9rem; }
+  @media (prefers-reduced-motion: no-preference) { .etape { transition: border-color .15s; } }
+</style>
+
+<main class="page">
+  <header class="chapeau">
+    <span class="etiquette">Prototype non officiel · essai de terrain</span>
+    <h1>Essai Hawiya sur S23 Ultra</h1>
+    <p>Dans l'ordre, du PC à l'administration. Pour chaque étape, comparez avec l'<b>attendu</b>, marquez « OK » ou « Problème », et notez ce que vous voyez (message exact, durée, nombre de doigts). À la fin, copiez le compte rendu et collez-le dans la conversation.</p>
+    <p class="discret">Votre avancement reste dans ce navigateur. Branche à utiliser : <code>main-r6gn0x</code>.</p>
+  </header>
+
+  <div class="regles">
+    <strong>Avant de commencer</strong>
+    <ul>
+      <li>Identités <b>fictives uniquement</b> dans les fiches (un jeu est fourni à l'étape 5). Les doigts sont les vôtres, ou ceux de volontaires informés.</li>
+      <li>Pour la photo du visage, un objet ou une affiche suffit : aucun vrai visage n'est nécessaire.</li>
+      <li>Le téléphone est relié au PC par <b>débogage sans fil</b> (même Wi-Fi) ou par câble USB. Dans les deux cas, <code>adb reverse</code> le relie au serveur, qui n'est pas exposé sur le réseau.</li>
+      <li>Ne coupez pas le Wi-Fi du téléphone pendant l'essai : la liaison sans fil tomberait. Le test « hors ligne » arrête le serveur à la place.</li>
+      <li>À la fin, la section 11 efface toutes les données de l'essai.</li>
+    </ul>
+  </div>
+
+  <div class="bilan" aria-live="polite">
+    <div class="jauge" aria-hidden="true"><span class="j-ok" id="jauge-ok"></span><span class="j-pb" id="jauge-pb"></span></div>
+    <span class="chiffres" id="chiffres"></span>
+  </div>
+
+  <div id="sections"></div>
+
+  <section class="fin">
+    <h2>Compte rendu</h2>
+    <p class="discret">Le texte ci-dessous reprend les problèmes et toutes vos notes. Copiez-le, puis collez-le dans la conversation.</p>
+    <div class="actions">
+      <button class="btn" id="copier-rapport" type="button">Copier le compte rendu</button>
+      <button class="btn secondaire" id="effacer" type="button">Tout remettre à zéro</button>
+    </div>
+    <p class="discret" id="confirmation-effacer" hidden>
+      Toutes les coches et notes seront effacées.
+      <button class="btn secondaire" id="effacer-oui" type="button">Confirmer</button>
+      <button class="btn secondaire" id="effacer-non" type="button">Annuler</button>
+    </p>
+    <textarea id="rapport" readonly aria-label="Compte rendu"></textarea>
+  </section>
+</main>
+
+<script>
+const SECTIONS = [
+  { titre: "Préparer le PC", intro: "Dans le dossier du projet, sous Windows (PowerShell ou Git Bash), Docker Desktop lancé.", etapes: [
+    { id: "pc-code", titre: "Récupérer la dernière version", cmd: "git fetch origin main-r6gn0x\ngit checkout main-r6gn0x\ngit pull origin main-r6gn0x",
+      attendu: "Le dernier commit s'intitule <b>« Préparation de l'essai sur téléphone : matcher et accès au serveur »</b>." },
+    { id: "pc-env", titre: "Vérifier le fichier .env", detail: "Si .env n'existe pas, copiez .env.example. Les valeurs « change-moi » doivent être remplacées.",
+      attendu: "<b>JWT_SECRET</b> (32 caractères au moins), <b>MATCHER_CLE</b> (16 au moins) et <b>SEED_AGENT_MOT_DE_PASSE</b> sont renseignés. Notez ce dernier : c'est le mot de passe de AG-0001." },
+    { id: "pc-docker", titre: "Repartir d'une base propre et démarrer", cmd: "docker compose down -v\ndocker compose up --build",
+      attendu: "Les journaux du backend montrent <b>« Running upgrade 0001 -> 0002 »</b>, puis Uvicorn en écoute. Le matcher démarre sans erreur." },
+    { id: "pc-seed", titre: "Charger les fiches fictives (autre terminal)", cmd: "docker compose exec backend python -m app.seed",
+      attendu: "<b>« 30 citoyens fictifs créés. »</b>" },
+    { id: "pc-sante", titre: "Tester l'API dans le navigateur du PC", cmd: "http://localhost:8000/sante",
+      attendu: "La page affiche <b>{\"statut\":\"ok\"}</b>." },
+  ]},
+  { titre: "Installer l'application", etapes: [
+    { id: "app-adb", titre: "Trouver adb sur le PC", detail: "adb est dans le SDK Android. S'il n'est pas reconnu, utilisez le chemin complet (PowerShell) ci-dessous, ou ajoutez ce dossier au PATH.", cmd: "& \"$env:LOCALAPPDATA\\Android\\Sdk\\platform-tools\\adb.exe\" version",
+      attendu: "La version d'adb s'affiche (35 ou plus recommandé)." },
+    { id: "app-appairer", titre: "Appairer le téléphone sans fil (une seule fois)", detail: "Téléphone : Options pour les développeurs → Débogage sans fil → activer → « Associer l'appareil avec un code d'association ». Utilisez l'IP:PORT et le code à 6 chiffres affichés dans cette fenêtre.", cmd: "adb pair 192.168.X.X:PORT_ASSOCIATION",
+      attendu: "<b>« Successfully paired »</b> après saisie du code." },
+    { id: "app-connecter", titre: "Se connecter au téléphone", detail: "Utilisez l'IP:PORT affiché en haut de l'écran « Débogage sans fil » (ce port est DIFFÉRENT de celui de l'association).", cmd: "adb connect 192.168.X.X:PORT\nadb devices",
+      attendu: "Le téléphone apparaît avec l'état <b>device</b>." },
+    { id: "app-reverse", titre: "Relier localhost du téléphone au PC", cmd: "adb reverse tcp:8000 tcp:8000\nadb reverse --list",
+      attendu: "La liste affiche <b>tcp:8000 tcp:8000</b>. À refaire si la liaison sans fil tombe (veille prolongée, changement de Wi-Fi) : adb connect puis adb reverse." },
+    { id: "app-run", titre: "Compiler et installer", cmd: "cd mobile\nflutter pub get\nflutter run",
+      attendu: "Le téléphone est proposé par flutter run (choisir le S23 si plusieurs appareils). L'application s'ouvre sur l'écran <b>Hawiya</b> « Votre main suffit. », polices Fraunces (titre) et Figtree, mention « Prototype de démonstration · système non officiel ». Sans fil, la première installation peut prendre quelques minutes." },
+    { id: "app-chrome", titre: "Vérifier la liaison depuis le téléphone", detail: "Dans Chrome sur le téléphone.", cmd: "http://localhost:8000/sante",
+      attendu: "<b>{\"statut\":\"ok\"}</b> s'affiche aussi sur le téléphone." },
+  ]},
+  { titre: "Première connexion et approbation du téléphone", etapes: [
+    { id: "cx-code", titre: "Lire le code du téléphone", attendu: "Sous le bouton « Se connecter » : <b>« Code de ce téléphone : XXXXXXXX »</b>. Notez-le." },
+    { id: "cx-attente", titre: "Se connecter avec AG-0001", detail: "Adresse : http://localhost:8000 (proposée par défaut). Mot de passe : SEED_AGENT_MOT_DE_PASSE.",
+      attendu: "Encadré doré <b>« Téléphone à faire approuver »</b> avec le même code." },
+    { id: "cx-approuver", titre: "Approuver le téléphone depuis le PC", cmd: "docker compose exec backend python -m app.outils appareils\ndocker compose exec backend python -m app.outils approuver CODE",
+      attendu: "<b>« Appareil CODE approuvé. »</b>" },
+    { id: "cx-accueil", titre: "Se reconnecter", attendu: "Accueil avec <b>« Agent de démonstration · AG-0001 »</b> et les tuiles : Enregistrer une personne, Identifier, En attente d'envoi, Compléter les empreintes, Test de capture." },
+    { id: "cx-reprise", titre: "Fermer complètement l'application, puis la rouvrir", detail: "Balayer l'application dans la liste des applications récentes.",
+      attendu: "« Reprise de la session… » puis directement l'<b>accueil, sans mot de passe</b>." },
+  ]},
+  { titre: "Test de capture (non-régression)", etapes: [
+    { id: "cap-test", titre: "Tuile « Test de capture (débogage) », main droite", attendu: "Comme en phase 3 : flash, guidage, <b>capture automatique</b> puis écran de résultat avec les découpes et leur netteté." },
+  ]},
+  { titre: "Enregistrer une personne (en ligne)", intro: "Tuile « Enregistrer une personne ». Utilisez la fiche fictive ci-dessous.", fiche: true, etapes: [
+    { id: "enr-vide", titre: "Toucher « Suivant » sans rien saisir", attendu: "Messages <b>« Champ obligatoire »</b>, « Choix obligatoire » et « Date obligatoire » sous les champs ; on reste sur « Identité »." },
+    { id: "enr-tel", titre: "Saisir 12 dans Téléphone, puis 321 00 00", attendu: "D'abord <b>« Attendu : +269 suivi de 7 chiffres »</b>, puis plus d'erreur." },
+    { id: "enr-date", titre: "Date de naissance", attendu: "Calendrier <b>en français</b>, saisie au clavier possible (14/05/1990), date future impossible." },
+    { id: "enr-domicile", titre: "Domicile et signalement", attendu: "Île en 3 boutons ; couleurs des yeux et des cheveux en français ; taille 49 ou 251 refusée." },
+    { id: "enr-photo", titre: "Prendre la photo", attendu: "Demande d'autorisation de la caméra (la première fois), photo prise, <b>aperçu affiché</b>, bouton « Reprendre la photo »." },
+    { id: "enr-signature", titre: "Signer au doigt puis « Valider »", attendu: "Le trait suit le doigt sans décalage ; après « Valider », l'image de la signature s'affiche." },
+    { id: "enr-empreintes", titre: "Capturer les empreintes (4 étapes)", attendu: "Les 4 étapes s'enchaînent sans écran de fin ; retour sur « Empreintes » avec <b>8 doigts nets ou plus sur 10</b>. Notez le nombre." },
+    { id: "enr-complement", titre: "S'il manque des doigts : « Compléter les doigts manquants »", attendu: "Seules les étapes incomplètes sont refaites ; le compteur monte." },
+    { id: "enr-recap", titre: "Récapitulatif", attendu: "Toutes les valeurs sont justes, téléphone affiché <b>+2693210000</b>." },
+    { id: "enr-envoi", titre: "Toucher « Enregistrer »", attendu: "Les étapes défilent (contrôle anti-doublon, création, photo, empreintes) puis <b>« Enregistrement terminé »</b> avec un numéro KM-2026-…. Notez le numéro et la durée." },
+    { id: "enr-docs", titre: "Vérifier sur le PC", detail: "Dans /docs (connexion décrite en section 10), ou plus simplement dans la base via l'API.", cmd: "http://localhost:8000/docs",
+      attendu: "GET /citoyens/{numero} renvoie la fiche ; GET /citoyens/{numero}/photo renvoie la photo." },
+  ]},
+  { titre: "Identification", intro: "Tuile « Identifier une personne ». La règle : ne jamais afficher la fiche d'une autre personne.", etapes: [
+    { id: "id-droite", titre: "Même personne, main droite, 5 essais", attendu: "<b>« Personne identifiée »</b> avec la bonne fiche, ou « non concluant ». Notez pour chaque essai : verdict, doigts concordants, durée." },
+    { id: "id-gauche", titre: "Même personne, main gauche", attendu: "Identifiée, avec la même fiche." },
+    { id: "id-autre", titre: "Une autre personne, non enregistrée", attendu: "<b>« Personne non enregistrée »</b> ou « non concluant », <b>jamais une fiche</b>." },
+    { id: "id-rescan", titre: "En cas de « non concluant » : rescanner", attendu: "« Rescanner (scan 2 sur 3) », puis 3 sur 3, puis <b>« Vérification manuelle »</b> si le doute reste." },
+    { id: "id-redemarrage", titre: "Redémarrer le matcher, puis identifier de nouveau", cmd: "docker compose restart matcher",
+      attendu: "La personne est <b>toujours identifiée</b> (le matcher a rechargé les empreintes depuis la base)." },
+  ]},
+  { titre: "Anti-doublon", etapes: [
+    { id: "dbl-meme", titre: "Réenregistrer la même personne sous une autre identité fictive", detail: "Ex. nom TESTDOUBLON, numéro d'acte FICTIF-1990-0102.",
+      attendu: "<b>« Personne déjà enregistrée »</b> ou « Doublon possible », et <b>aucun numéro</b> attribué." },
+    { id: "dbl-attente", titre: "Accueil → « En attente d'envoi »", attendu: "L'élément est « À vérifier » avec la fiche concernée. AG-0001 étant administrateur, « Valider (superviseur) » est proposé pour un doublon possible. Supprimez l'élément." },
+  ]},
+  { titre: "Hors ligne", intro: "On arrête le serveur pour simuler l'absence de réseau (le câble USB reste branché).", etapes: [
+    { id: "hl-arret", titre: "Arrêter le serveur", cmd: "docker compose stop backend", attendu: "La commande se termine sans erreur." },
+    { id: "hl-enr", titre: "Enregistrer une personne", detail: "Une autre identité fictive (ex. TESTHORSLIGNE), vos doigts ou ceux d'un volontaire.",
+      attendu: "Écran <b>« Enregistré sur le téléphone »</b> avec une référence provisoire HL-XXXXXX." },
+    { id: "hl-compteur", titre: "Revenir à l'accueil", attendu: "<b>« En attente d'envoi (1) »</b>." },
+    { id: "hl-redemarrage", titre: "Fermer complètement l'application, puis la rouvrir", attendu: "Écran de connexion (la session ne peut pas reprendre sans serveur)." },
+    { id: "hl-faux", titre: "Se connecter avec un mot de passe faux", attendu: "<b>« Serveur injoignable et mot de passe incorrect. »</b>" },
+    { id: "hl-bon", titre: "Se connecter avec le bon mot de passe", attendu: "Accueil avec l'encadré <b>« Mode hors ligne »</b>, « Identifier » grisé, et l'enregistrement toujours en attente (1)." },
+    { id: "hl-retour", titre: "Redémarrer le serveur, puis « Se connecter en ligne »", cmd: "docker compose start backend",
+      attendu: "Après le mot de passe : message <b>« Synchronisation : 1 enregistrement(s) envoyé(s) »</b>, compteur à zéro. Le numéro est visible côté serveur." },
+  ]},
+  { titre: "Sessions et mot de passe", etapes: [
+    { id: "ses-mdp", titre: "Accueil → icône clé → changer le mot de passe", detail: "10 caractères au moins, sans le matricule. Notez le nouveau mot de passe.",
+      attendu: "« Mot de passe changé. » ; après déconnexion, seul le <b>nouveau</b> mot de passe fonctionne." },
+    { id: "ses-blocage", titre: "5 mots de passe faux de suite, puis le bon", attendu: "Toujours le même message ; le bon mot de passe est <b>refusé pendant 15 minutes</b>." },
+    { id: "ses-debloquer", titre: "Débloquer sans attendre (si besoin)", cmd: "docker compose exec backend python -m app.outils reinitialiser AG-0001",
+      attendu: "Un mot de passe provisoire s'affiche ; à la connexion, l'écran <b>« Nouveau mot de passe »</b> est obligatoire." },
+  ]},
+  { titre: "Administration (depuis /docs sur le PC)", etapes: [
+    { id: "adm-docs", titre: "Se connecter dans /docs", detail: "Bouton Authorize : username AG-0001, password, client_id poste-demo-0001. La première fois : approuver ce poste avec l'outil (section 3), puis recommencer.",
+      cmd: "http://localhost:8000/docs", attendu: "Le cadenas est fermé ; GET /auth/moi renvoie AG-0001, rôle administrateur." },
+    { id: "adm-agent", titre: "Créer un agent : POST /agents", cmd: "{\"matricule\": \"AG-0100\", \"nom\": \"Agent fictif 100\"}",
+      attendu: "Réponse 201 avec un <b>mot de passe provisoire</b> de 12 caractères (montré une seule fois)." },
+    { id: "adm-provisoire", titre: "Sur le téléphone : se déconnecter, se connecter en AG-0100", attendu: "Écran <b>« Nouveau mot de passe »</b> obligatoire, puis accueil au nom d'AG-0100." },
+    { id: "adm-revoquer", titre: "Révoquer le téléphone : POST /appareils/{code}/revoquer", detail: "Code du téléphone (section 3).",
+      attendu: "L'action suivante dans l'application échoue ; à la reconnexion : message <b>« révoqué »</b> et un <b>nouveau code</b> sous le bouton. Approuvez ce nouveau code pour continuer." },
+  ]},
+  { titre: "Nettoyer", etapes: [
+    { id: "net-base", titre: "Effacer les données de l'essai", cmd: "docker compose down -v",
+      attendu: "La base (fiches, empreintes, photos) est supprimée. Désinstaller l'application efface aussi ce qu'elle garde sur le téléphone." },
+  ]},
+];
+
+const FICHE = [
+  ["Nom", "TESTFICTIF"], ["Prénom(s)", "Ali Démo"], ["Sexe", "Masculin"], ["Naissance", "14/05/1990 à Moroni"],
+  ["Nationalité", "Comorienne"], ["N° d'acte", "FICTIF-1990-0101"], ["Téléphone", "321 00 00"],
+  ["Île", "Ngazidja"], ["Ville / quartier", "Moroni, Magoudjou"], ["Adresse", "Rue fictive n° 1"],
+  ["Taille", "172 cm"], ["Yeux / cheveux", "Marron / Noirs"],
+];
+
+const CLE = "hawiya-essai-s23-v1";
+let etat = {};
+try { etat = JSON.parse(localStorage.getItem(CLE) || "{}") || {}; } catch (e) { etat = {}; }
+function sauver() { try { localStorage.setItem(CLE, JSON.stringify(etat)); } catch (e) { /* stockage indisponible : l'essai continue */ } }
+
+function el(tag, attrs = {}, ...enfants) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "html") n.innerHTML = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v);
+  }
+  for (const c of enfants) if (c != null) n.append(c);
+  return n;
+}
+
+async function copier(texte, bouton) {
+  const initial = bouton.textContent;
+  try { await navigator.clipboard.writeText(texte); bouton.textContent = "Copié"; }
+  catch (e) { bouton.textContent = "Sélectionnez"; }
+  setTimeout(() => (bouton.textContent = initial), 1600);
+}
+
+function rendre() {
+  const racine = document.getElementById("sections");
+  racine.innerHTML = "";
+  SECTIONS.forEach((s, i) => {
+    const bloc = el("section", { class: "bloc", "aria-labelledby": `s${i}` });
+    const compte = el("span", { class: "compte", id: `compte-${i}` });
+    bloc.append(el("div", { class: "bloc-entete" }, el("span", { class: "numero" }, String(i + 1)), el("h2", { id: `s${i}` }, s.titre), compte));
+    if (s.intro) bloc.append(el("p", { class: "intro" }, s.intro));
+    if (s.fiche) {
+      const dl = el("dl");
+      FICHE.forEach(([k, v]) => dl.append(el("dt", {}, k), el("dd", {}, v)));
+      bloc.append(el("div", { class: "fiche" }, el("strong", {}, "Fiche fictive à saisir"), dl));
+    }
+    s.etapes.forEach((e) => {
+      const d = etat[e.id] || {};
+      const carte = el("article", { class: "etape", "data-etat": d.etat || "" });
+      carte.append(el("h3", {}, e.titre));
+      if (e.detail) carte.append(el("p", { class: "detail" }, e.detail));
+      if (e.cmd) {
+        const b = el("button", { class: "copier", type: "button", "aria-label": "Copier la commande" }, "Copier");
+        b.addEventListener("click", () => copier(e.cmd, b));
+        carte.append(el("div", { class: "cmd" }, el("code", {}, e.cmd), b));
+      }
+      carte.append(el("p", { class: "attendu", html: "<b>Attendu :</b> " + e.attendu }));
+      const bOk = el("button", { type: "button", class: "b-ok", "aria-pressed": String(d.etat === "ok") }, "OK");
+      const bPb = el("button", { type: "button", class: "b-pb", "aria-pressed": String(d.etat === "probleme") }, "Problème");
+      const note = el("textarea", { id: `note-${e.id}`, placeholder: "Note : message exact, durée, nombre de doigts…", "aria-label": `Note pour : ${e.titre}` });
+      note.value = d.note || "";
+      // Mise à jour sur place : la page ne saute pas et le focus reste sur le bouton.
+      const choisir = (valeur) => {
+        const actuel = (etat[e.id] || {}).etat;
+        const nouveau = actuel === valeur ? "" : valeur;
+        etat[e.id] = { ...(etat[e.id] || {}), etat: nouveau };
+        sauver();
+        carte.dataset.etat = nouveau;
+        bOk.setAttribute("aria-pressed", String(nouveau === "ok"));
+        bPb.setAttribute("aria-pressed", String(nouveau === "probleme"));
+        majBilan();
+        if (nouveau === "probleme" && !note.value) note.focus();
+      };
+      bOk.addEventListener("click", () => choisir("ok"));
+      bPb.addEventListener("click", () => choisir("probleme"));
+      note.addEventListener("input", () => { etat[e.id] = { ...(etat[e.id] || {}), note: note.value }; sauver(); majRapport(); });
+      carte.append(el("div", { class: "etat", role: "group", "aria-label": "État de l'étape" }, bOk, bPb), note);
+      bloc.append(carte);
+    });
+    racine.append(bloc);
+  });
+  majBilan();
+}
+
+function majBilan() {
+  let total = 0, ok = 0, pb = 0;
+  SECTIONS.forEach((s, i) => {
+    let sOk = 0, sPb = 0;
+    s.etapes.forEach((e) => { const v = (etat[e.id] || {}).etat; if (v === "ok") sOk++; if (v === "probleme") sPb++; });
+    total += s.etapes.length; ok += sOk; pb += sPb;
+    const c = document.getElementById(`compte-${i}`);
+    if (c) c.textContent = `${sOk + sPb}/${s.etapes.length}` + (sPb ? ` · ${sPb} problème${sPb > 1 ? "s" : ""}` : "");
+  });
+  document.getElementById("jauge-ok").style.width = `${(ok / total) * 100}%`;
+  document.getElementById("jauge-pb").style.width = `${(pb / total) * 100}%`;
+  document.getElementById("chiffres").innerHTML = `<b>${ok}</b> OK · <b>${pb}</b> problème${pb > 1 ? "s" : ""} · <b>${total - ok - pb}</b> à faire sur ${total}`;
+  majRapport();
+}
+
+function majRapport() {
+  const lignes = ["Essai Hawiya sur S23 Ultra — compte rendu", ""];
+  let ok = 0, pb = 0, total = 0;
+  SECTIONS.forEach((s, i) => {
+    const contenu = [];
+    s.etapes.forEach((e) => {
+      total++;
+      const d = etat[e.id] || {};
+      if (d.etat === "ok") ok++;
+      if (d.etat === "probleme") pb++;
+      const note = (d.note || "").trim();
+      if (d.etat === "probleme" || note) {
+        const marque = d.etat === "probleme" ? "PROBLÈME" : d.etat === "ok" ? "OK" : "à faire";
+        contenu.push(`- [${marque}] ${e.titre}${note ? " — " + note.replace(/\s+/g, " ") : ""}`);
+      }
+    });
+    const faits = s.etapes.filter((e) => (etat[e.id] || {}).etat).length;
+    lignes.push(`${i + 1}. ${s.titre} (${faits}/${s.etapes.length} faites)`);
+    lignes.push(...(contenu.length ? contenu : ["- rien à signaler"]), "");
+  });
+  lignes.splice(1, 0, `Bilan : ${ok} OK, ${pb} problème(s), ${total - ok - pb} non faite(s) sur ${total}.`);
+  document.getElementById("rapport").value = lignes.join("\n");
+}
+
+document.getElementById("copier-rapport").addEventListener("click", (ev) => {
+  const zone = document.getElementById("rapport");
+  copier(zone.value, ev.currentTarget).then(() => { zone.focus(); zone.select(); });
+});
+document.getElementById("effacer").addEventListener("click", () => { document.getElementById("confirmation-effacer").hidden = false; });
+document.getElementById("effacer-non").addEventListener("click", () => { document.getElementById("confirmation-effacer").hidden = true; });
+document.getElementById("effacer-oui").addEventListener("click", () => {
+  etat = {}; sauver(); document.getElementById("confirmation-effacer").hidden = true; rendre();
+});
+
+rendre();
+</script>
+</html>

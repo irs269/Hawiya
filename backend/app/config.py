@@ -12,7 +12,14 @@ class Parametres(BaseSettings):
 
     jwt_secret: str
     jwt_algorithme: str = "HS256"
-    jwt_duree_minutes: int = 60
+    # Jeton d'accès court ; le jeton de renouvellement permet d'en obtenir un autre.
+    jwt_duree_minutes: int = 15
+    renouvellement_duree_jours: int = 30
+
+    # Blocage après des mots de passe faux consécutifs.
+    connexion_echecs_max: int = 5
+    connexion_blocage_minutes: int = 15
+    mot_de_passe_longueur_min: int = 10
 
     # Fuseau utilisé pour l'année du numéro et les statistiques « du jour ».
     fuseau_horaire: str = "Indian/Comoro"

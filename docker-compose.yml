@@ -38,7 +38,16 @@ services:
     environment:
       MATCHER_CLE: ${MATCHER_CLE}
       MATCHER_PORT: "8080"
-      # Galerie chargée depuis PostgreSQL (compte lecture seule) : branché en 4d.
+      # Galerie rechargée depuis PostgreSQL à chaque démarrage : sans cela, un
+      # redémarrage vidait la galerie et les personnes déjà enregistrées
+      # n'étaient plus reconnues. La connexion est ouverte en lecture seule ;
+      # un compte PostgreSQL dédié en lecture seule reste à créer (phase 7).
+      MATCHER_DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB}
+      MATCHER_DB_UTILISATEUR: ${POSTGRES_USER}
+      MATCHER_DB_MOT_DE_PASSE: ${POSTGRES_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 || exit 1"]
       interval: 5s

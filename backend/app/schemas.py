@@ -11,7 +11,9 @@ from app.referentiels import (
     COULEURS_CHEVEUX,
     COULEURS_YEUX,
     ILES,
+    ROLES_AGENT,
     SEXES,
+    STATUTS_AGENT,
     TAILLE_MAX_CM,
     TAILLE_MIN_CM,
 )
@@ -29,6 +31,96 @@ DATE_NAISSANCE_MIN = date(1900, 1, 1)
 class Jeton(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    # Jeton de renouvellement : à garder dans le coffre de l'appareil.
+    refresh_token: str
+    expires_in: int  # secondes de validité du jeton d'accès
+    doit_changer_mot_de_passe: bool = False
+
+
+class DemandeRenouvellement(BaseModel):
+    refresh_token: str = Field(min_length=16, max_length=200)
+
+
+class DemandeMotDePasse(BaseModel):
+    ancien: str = Field(min_length=1, max_length=200)
+    nouveau: str = Field(min_length=1, max_length=200)
+
+
+class AgentMoi(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    matricule: str
+    nom: str
+    role: str
+    doit_changer_mot_de_passe: bool = False
+
+
+Role = Literal[ROLES_AGENT]
+StatutAgent = Literal[STATUTS_AGENT]
+_MOTIF_MATRICULE = re.compile(r"^[A-Z0-9][A-Z0-9-]{2,19}$")
+
+
+class AgentCreation(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    matricule: str = Field(min_length=3, max_length=20)
+    nom: str = Field(min_length=1, max_length=150)
+    role: Role = "agent"
+    ile: Ile | None = None
+    commune: str | None = Field(default=None, max_length=100)
+
+    @field_validator("matricule")
+    @classmethod
+    def valider_matricule(cls, valeur: str) -> str:
+        valeur = valeur.upper()
+        if not _MOTIF_MATRICULE.match(valeur):
+            raise ValueError("Matricule : lettres, chiffres et tirets (3 à 20 caractères)")
+        return valeur
+
+
+class AgentModification(BaseModel):
+    """Champs absents = inchangés."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    nom: str | None = Field(default=None, min_length=1, max_length=150)
+    role: Role | None = None
+    statut: StatutAgent | None = None
+    ile: Ile | None = None
+    commune: str | None = Field(default=None, max_length=100)
+
+
+class AgentLecture(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    matricule: str
+    nom: str
+    role: str
+    statut: str
+    ile: str | None
+    commune: str | None
+    doit_changer_mot_de_passe: bool
+    bloque_jusqu_a: datetime | None
+    cree_le: datetime
+
+
+class AgentAvecMotDePasse(AgentLecture):
+    """Réponse à une création ou réinitialisation : le mot de passe provisoire
+    n'est montré qu'UNE fois, à remettre à l'agent en main propre."""
+
+    mot_de_passe_provisoire: str
+
+
+class AppareilLecture(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    nom: str | None
+    statut: str
+    demande_par: str | None = None  # matricule de l'agent de la première demande
+    approuve_le: datetime | None
+    derniere_connexion: datetime | None
+    cree_le: datetime
 
 
 class CitoyenChamps(BaseModel):
@@ -121,3 +213,86 @@ class Statistiques(BaseModel):
     enregistres_aujourdhui: int
     par_ile: dict[str, int]
     par_sexe: dict[str, int]
+
+
+# --- Biométrie ---
+
+# Une découpe de doigt encodée en base64 (PNG ou JPEG) : ~2 Mo au plus.
+TAILLE_MAX_IMAGE_B64 = 2_800_000
+
+
+class DoigtImage(BaseModel):
+    """Découpe d'un bout de doigt prise par le téléphone. Elle sert à calculer le
+    modèle puis est oubliée : elle n'est jamais enregistrée."""
+
+    doigt: int = Field(ge=1, le=10, description="ISO 19794 : 1 = pouce droit … 10 = auriculaire gauche")
+    image: str = Field(min_length=16, max_length=TAILLE_MAX_IMAGE_B64, description="PNG ou JPEG en base64")
+    dpi_estime: float = Field(ge=200, le=2000)
+
+
+def _doigts_uniques(doigts: list[DoigtImage]) -> list[DoigtImage]:
+    if len({d.doigt for d in doigts}) != len(doigts):
+        raise ValueError("Un même doigt est présent deux fois")
+    return doigts
+
+
+class ScanMain(BaseModel):
+    doigts: list[DoigtImage] = Field(min_length=1, max_length=10)
+
+    _unicite = field_validator("doigts")(_doigts_uniques)
+
+
+class DemandeIdentification(BaseModel):
+    """Un scan, ou plusieurs scans de la même main (après un « non concluant »)."""
+
+    scans: list[ScanMain] = Field(min_length=1, max_length=3)
+
+
+class ReponseIdentification(BaseModel):
+    verdict: Literal["identifie", "non_enregistre", "non_concluant"]
+    motif: str
+    doigts_compares: int
+    doigts_concordants: int
+    doigts_illisibles: list[int]
+    citoyen: CitoyenLecture | None = None
+
+
+class DemandeEmpreintes(BaseModel):
+    doigts: list[DoigtImage] = Field(min_length=1, max_length=10)
+    # Un superviseur peut passer outre un « doublon possible » après vérification.
+    validation_superviseur: bool = False
+
+    _unicite = field_validator("doigts")(_doigts_uniques)
+
+
+class ReponseDoublon(BaseModel):
+    verdict: Literal["doublon_certain", "doublon_possible", "aucun_doublon"]
+    motif: str
+    numeros: list[str] = []  # fiches à vérifier
+    doigts_illisibles: list[int] = []
+
+
+class ReponseEmpreintes(BaseModel):
+    numero: str
+    doigts_enregistres: list[int]
+    doigts_illisibles: list[int]
+    controle_doublon: ReponseDoublon
+
+
+# --- Photo du visage et signature ---
+
+# Image encodée en base64 : ~2 Mo au plus une fois décodée.
+TAILLE_MAX_MEDIA_B64 = 2_800_000
+
+
+class MediasCitoyen(BaseModel):
+    """Photo du visage (JPEG ou PNG) et signature (PNG), en base64.
+    Un champ absent laisse la valeur enregistrée inchangée."""
+
+    photo: str | None = Field(default=None, max_length=TAILLE_MAX_MEDIA_B64)
+    signature: str | None = Field(default=None, max_length=TAILLE_MAX_MEDIA_B64)
+
+
+class EtatMedias(BaseModel):
+    photo: bool
+    signature: bool
