@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.dependances import SessionDb
-from app.routers import auth, citoyens, statistiques
+from app.routers import auth, biometrie, citoyens, statistiques
 
 app = FastAPI(
     title="Hawiya — API (prototype)",
@@ -20,6 +20,7 @@ app = FastAPI(
 app.include_router(auth.router)
 app.include_router(citoyens.router)
 app.include_router(statistiques.router)
+app.include_router(biometrie.router)
 
 
 @app.get("/sante", tags=["Supervision"])

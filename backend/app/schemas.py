@@ -121,3 +121,67 @@ class Statistiques(BaseModel):
     enregistres_aujourdhui: int
     par_ile: dict[str, int]
     par_sexe: dict[str, int]
+
+
+# --- Biométrie ---
+
+# Une découpe de doigt encodée en base64 (PNG ou JPEG) : ~2 Mo au plus.
+TAILLE_MAX_IMAGE_B64 = 2_800_000
+
+
+class DoigtImage(BaseModel):
+    """Découpe d'un bout de doigt prise par le téléphone. Elle sert à calculer le
+    modèle puis est oubliée : elle n'est jamais enregistrée."""
+
+    doigt: int = Field(ge=1, le=10, description="ISO 19794 : 1 = pouce droit … 10 = auriculaire gauche")
+    image: str = Field(min_length=16, max_length=TAILLE_MAX_IMAGE_B64, description="PNG ou JPEG en base64")
+    dpi_estime: float = Field(ge=200, le=2000)
+
+
+def _doigts_uniques(doigts: list[DoigtImage]) -> list[DoigtImage]:
+    if len({d.doigt for d in doigts}) != len(doigts):
+        raise ValueError("Un même doigt est présent deux fois")
+    return doigts
+
+
+class ScanMain(BaseModel):
+    doigts: list[DoigtImage] = Field(min_length=1, max_length=10)
+
+    _unicite = field_validator("doigts")(_doigts_uniques)
+
+
+class DemandeIdentification(BaseModel):
+    """Un scan, ou plusieurs scans de la même main (après un « non concluant »)."""
+
+    scans: list[ScanMain] = Field(min_length=1, max_length=3)
+
+
+class ReponseIdentification(BaseModel):
+    verdict: Literal["identifie", "non_enregistre", "non_concluant"]
+    motif: str
+    doigts_compares: int
+    doigts_concordants: int
+    doigts_illisibles: list[int]
+    citoyen: CitoyenLecture | None = None
+
+
+class DemandeEmpreintes(BaseModel):
+    doigts: list[DoigtImage] = Field(min_length=1, max_length=10)
+    # Un superviseur peut passer outre un « doublon possible » après vérification.
+    validation_superviseur: bool = False
+
+    _unicite = field_validator("doigts")(_doigts_uniques)
+
+
+class ReponseDoublon(BaseModel):
+    verdict: Literal["doublon_certain", "doublon_possible", "aucun_doublon"]
+    motif: str
+    numeros: list[str] = []  # fiches à vérifier
+    doigts_illisibles: list[int] = []
+
+
+class ReponseEmpreintes(BaseModel):
+    numero: str
+    doigts_enregistres: list[int]
+    doigts_illisibles: list[int]
+    controle_doublon: ReponseDoublon

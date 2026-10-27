@@ -67,7 +67,7 @@ docker compose run --rm -v ./captures:/captures:ro -v ./docs:/docs backend \
 
 ## Règle de décision : ne jamais afficher la fiche d'une autre personne
 
-> Code : `backend/app/biometrie/decision.py` (testé sur des scores fictifs). Pas encore branché sur une route d'API : il n'existe pas encore de route d'identification.
+> Code : `backend/app/biometrie/decision.py` (testé sur des scores fictifs), utilisé par les routes `POST /identification`, `POST /doublons` et `PUT /citoyens/{numero}/empreintes` (variante `simple_inverse`, sonde comparée à 7 échelles de 0,85 à 1,15).
 
 Aucun système biométrique n'est exact à 100 %. L'objectif retenu est qu'il n'y ait **aucune erreur de personne** : en cas de doute, l'application répond « non concluant » (nouveau scan, puis vérification manuelle sur pièce d'identité) au lieu de deviner.
 

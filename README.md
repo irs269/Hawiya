@@ -70,6 +70,18 @@ Format **provisoire** : `KM-AAAA-NNNNNN-L`. Exemple : `KM-2026-000042-X`.
 
 Le numéro est attribué par le serveur uniquement. Le format est défini dans un seul fichier, [`backend/app/numero.py`](backend/app/numero.py), pour pouvoir adopter le format officiel quand l'État le fixera.
 
+## Empreintes et identification (API)
+
+Ces routes demandent que le matcher soit démarré. Le téléphone envoie les découpes des bouts de doigts, encodées en base64. Elles servent à calculer les modèles puis sont oubliées : **seuls les modèles sont enregistrés**.
+
+| Route | Rôle |
+|---|---|
+| `POST /doublons` | contrôle anti-doublon **avant** de créer la fiche (rien n'est enregistré) |
+| `PUT /citoyens/{numero}/empreintes` | enregistre les modèles. En cas de doublon certain ou possible : refus (409), sauf validation explicite d'un superviseur |
+| `POST /identification` | un à trois scans de la main → `identifie` (avec la fiche), `non_enregistre` ou `non_concluant` |
+
+Règle : **ne jamais afficher la fiche d'une autre personne**. En cas de doute, la réponse est `non_concluant` : l'agent recommence le scan, puis passe à une vérification manuelle sur pièce d'identité. Conditions et seuils provisoires : [`docs/evaluation/diagnostic-phase4.md`](docs/evaluation/diagnostic-phase4.md).
+
 ## Règles du projet
 
 Voir [`CLAUDE.md`](CLAUDE.md) : données fictives uniquement, modèles d'empreintes plutôt que photos, chiffrement partout, fonctionnement hors ligne, code commenté en français et testé.
