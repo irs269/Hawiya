@@ -1,21 +1,99 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../api/client_api.dart';
+import '../api/modeles.dart';
 import '../capture/ecran_capture.dart';
 import '../fiche/ecran_nouvelle_fiche.dart';
+import '../hors_ligne/ecran_attente.dart';
+import '../hors_ligne/reconnexion.dart';
+import '../hors_ligne/services.dart';
+import '../hors_ligne/synchronisation.dart';
 import '../theme/couleurs.dart';
 import 'communs.dart';
 import 'ecran_enregistrement.dart';
 import 'ecran_identification.dart';
 
-/// Accueil de l'agent connecté : les deux parcours, et le test de capture.
-class EcranAccueil extends StatelessWidget {
-  const EcranAccueil({super.key, required this.api});
+/// Accueil de l'agent connecté : parcours, enregistrements en attente,
+/// synchronisation automatique au retour du réseau.
+class EcranAccueil extends StatefulWidget {
+  const EcranAccueil({super.key, required this.api, required this.services, required this.agent});
 
   final ClientApi api;
+  final ServicesHorsLigne services;
+  final AgentConnecte agent;
 
-  void _ouvrir(BuildContext context, Widget ecran) =>
-      Navigator.push(context, MaterialPageRoute<void>(builder: (_) => ecran));
+  @override
+  State<EcranAccueil> createState() => _EcranAccueilState();
+}
+
+class _EcranAccueilState extends State<EcranAccueil> {
+  late final _synchroniseur = Synchroniseur(widget.services.file, widget.api);
+  StreamSubscription<bool>? _abonnementReseau;
+  int _enAttente = 0;
+  bool _synchronisation = false;
+
+  bool get _enLigne => widget.api.connecte;
+
+  @override
+  void initState() {
+    super.initState();
+    _abonnementReseau = widget.services.reseau.listen((reseau) {
+      if (reseau) _synchroniser(silencieux: true);
+    });
+    _synchroniser(silencieux: true);
+  }
+
+  @override
+  void dispose() {
+    _abonnementReseau?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _compter() async {
+    final n = await widget.services.file.nombre();
+    if (mounted) setState(() => _enAttente = n);
+  }
+
+  /// Envoie la file d'attente si l'agent est connecté en ligne.
+  Future<void> _synchroniser({bool silencieux = false}) async {
+    await _compter();
+    if (!_enLigne || _enAttente == 0 || _synchronisation) return;
+    setState(() => _synchronisation = true);
+    final bilan = await _synchroniseur.synchroniserTout();
+    if (!mounted) return;
+    setState(() => _synchronisation = false);
+    await _compter();
+    if (!mounted || (silencieux && bilan.traites == 0)) return;
+    final morceaux = [
+      if (bilan.envoyes.isNotEmpty) '${bilan.envoyes.length} enregistrement(s) envoyé(s)',
+      if (bilan.aVerifier.isNotEmpty) '${bilan.aVerifier.length} à vérifier',
+      if (bilan.erreurs.isNotEmpty) '${bilan.erreurs.length} en erreur',
+      if (bilan.arret == IssueSync.horsLigne) 'serveur injoignable',
+      if (bilan.arret == IssueSync.reconnexion) 'reconnexion nécessaire',
+    ];
+    if (morceaux.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Synchronisation : ${morceaux.join(' · ')}')));
+    }
+  }
+
+  Future<void> _reconnecter() async {
+    final ok = await demanderReconnexion(context, api: widget.api, services: widget.services, agent: widget.agent);
+    if (ok && mounted) {
+      setState(() {});
+      await _synchroniser();
+    }
+  }
+
+  Future<void> _ouvrir(Widget ecran) async {
+    await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => ecran));
+    if (mounted) await _synchroniser(silencieux: true);
+  }
+
+  void _enLigneSeulement() => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Disponible seulement en ligne : la comparaison se fait avec toute la base, sur le serveur.'),
+      ));
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -24,7 +102,7 @@ class EcranAccueil extends StatelessWidget {
             tooltip: 'Se déconnecter',
             icon: const Icon(Icons.logout),
             onPressed: () {
-              api.deconnexion();
+              widget.api.deconnexion();
               Navigator.pop(context);
             },
           ),
@@ -32,25 +110,52 @@ class EcranAccueil extends StatelessWidget {
         body: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
           children: [
+            Text('${widget.agent.nom} · ${widget.agent.matricule}', style: const TextStyle(color: Colors.black54)),
+            const SizedBox(height: 12),
+            if (!_enLigne) ...[
+              Encadre(
+                titre: 'Mode hors ligne',
+                texte: 'Vous pouvez enregistrer des personnes : elles seront envoyées au serveur '
+                    'à la reconnexion. Identification indisponible.',
+                couleur: Couleurs.dore,
+                icone: Icons.cloud_off_outlined,
+              ),
+              const SizedBox(height: 8),
+              BoutonSecondaire(texte: 'Se connecter en ligne', icone: Icons.cloud_sync_outlined, onPressed: _reconnecter),
+              const SizedBox(height: 16),
+            ],
             _Tuile(
               icone: Icons.person_add_alt_1_outlined,
               titre: 'Enregistrer une personne',
               texte: 'Identité, domicile, photo, signature et 10 empreintes.',
-              onTap: () => _ouvrir(context, EcranNouvelleFiche(api: api)),
+              onTap: () => _ouvrir(EcranNouvelleFiche(api: widget.api, services: widget.services, agent: widget.agent)),
             ),
             const SizedBox(height: 12),
             _Tuile(
               icone: Icons.fingerprint,
               titre: 'Identifier une personne',
-              texte: 'Scanner une main et retrouver la fiche.',
-              onTap: () => _ouvrir(context, EcranIdentification(api: api)),
+              texte: _enLigne ? 'Scanner une main et retrouver la fiche.' : 'En ligne seulement.',
+              discret: !_enLigne,
+              onTap: _enLigne ? () => _ouvrir(EcranIdentification(api: widget.api)) : _enLigneSeulement,
+            ),
+            const SizedBox(height: 12),
+            _Tuile(
+              icone: Icons.cloud_upload_outlined,
+              titre: 'En attente d\'envoi${_enAttente > 0 ? ' ($_enAttente)' : ''}',
+              texte: _synchronisation
+                  ? 'Synchronisation en cours…'
+                  : _enAttente == 0
+                      ? 'Tout est envoyé.'
+                      : 'Enregistrements gardés (chiffrés) sur le téléphone.',
+              onTap: () => _ouvrir(EcranAttente(api: widget.api, services: widget.services, agent: widget.agent)),
             ),
             const SizedBox(height: 12),
             _Tuile(
               icone: Icons.how_to_reg_outlined,
               titre: "Compléter les empreintes d'une fiche",
-              texte: 'Ajouter ou refaire les empreintes d\'une fiche existante.',
-              onTap: () => _ouvrir(context, EcranEnregistrement(api: api)),
+              texte: _enLigne ? 'Ajouter ou refaire les empreintes d\'une fiche existante.' : 'En ligne seulement.',
+              discret: !_enLigne,
+              onTap: _enLigne ? () => _ouvrir(EcranEnregistrement(api: widget.api)) : _enLigneSeulement,
             ),
             const SizedBox(height: 12),
             _Tuile(
@@ -58,7 +163,7 @@ class EcranAccueil extends StatelessWidget {
               titre: 'Test de capture (débogage)',
               texte: 'Capture seule, images gardées pour évaluation.',
               discret: true,
-              onTap: () => _ouvrir(context, const EcranCapture()),
+              onTap: () => _ouvrir(const EcranCapture()),
             ),
             const PiedPrototype(),
           ],

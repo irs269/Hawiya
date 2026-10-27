@@ -4,6 +4,9 @@ import '../api/client_api.dart';
 import '../api/modeles.dart';
 import '../capture/guidage.dart';
 import '../ecrans/communs.dart';
+import '../hors_ligne/file_attente.dart';
+import '../hors_ligne/services.dart';
+import '../hors_ligne/synchronisation.dart';
 import '../parcours/parcours.dart';
 import '../parcours/source_capture.dart';
 import '../theme/couleurs.dart';
@@ -23,12 +26,15 @@ List<int> isoDeLEtape(EtapeCapture e) {
 /// Identité → Domicile et signalement → Photo et signature → Empreintes →
 /// Récapitulatif → contrôle anti-doublon → numéro → confirmation.
 ///
-/// Les données restent en mémoire jusqu'à l'envoi (pas encore de stockage
-/// hors ligne chiffré : prévu dans une phase dédiée).
+/// « Enregistrer » écrit d'abord l'enregistrement CHIFFRÉ dans la file
+/// d'attente du téléphone, puis tente l'envoi : sans réseau, il reste en
+/// attente et partira à la synchronisation (le numéro est attribué à ce moment).
 class EcranNouvelleFiche extends StatefulWidget {
   const EcranNouvelleFiche({
     super.key,
     required this.api,
+    required this.services,
+    required this.agent,
     this.source = const SourceCapture(),
     this.sourcePhoto = const SourcePhoto(),
     this.brouillon,
@@ -37,6 +43,8 @@ class EcranNouvelleFiche extends StatefulWidget {
   /// Fiche déjà remplie (tests ; plus tard, reprise d'un brouillon hors ligne).
   final BrouillonFiche? brouillon;
   final ClientApi api;
+  final ServicesHorsLigne services;
+  final AgentConnecte agent;
   final SourceCapture source;
   final SourcePhoto sourcePhoto;
 
@@ -61,10 +69,12 @@ class _EcranNouvelleFicheState extends State<EcranNouvelleFiche> {
   bool _enCours = false;
   String? _erreur;
 
-  EnvoiEnregistrement? _envoi;
+  late final _synchroniseur = Synchroniseur(widget.services.file, widget.api);
+
+  /// Écrit dans la file d'attente dès le premier « Enregistrer ».
+  ElementAttente? _element;
+  ResultatSync? _resultat;
   EtapeEnvoi? _etapeEnvoi;
-  IssueEnvoi? _issue;
-  AgentConnecte? _agent;
 
   @override
   void dispose() {
@@ -103,12 +113,6 @@ class _EcranNouvelleFicheState extends State<EcranNouvelleFiche> {
   void _allerA(int etape) => setState(() {
         _etape = etape;
         _afficherErreurs = false;
-        // Fiche pas encore créée : l'envoi repartira de zéro avec les données
-        // modifiées (nouveau contrôle anti-doublon compris).
-        if (_envoi?.citoyen == null) {
-          _envoi = null;
-          _issue = null;
-        }
       });
 
   // ----------------------------------------------------------- photo, signature
@@ -160,27 +164,34 @@ class _EcranNouvelleFicheState extends State<EcranNouvelleFiche> {
 
   // ------------------------------------------------------------------- envoi
 
+  /// Premier appel : écrit l'enregistrement (chiffré) dans la file, puis
+  /// l'envoie. Appels suivants : reprise (réessai, validation superviseur).
   Future<void> _envoyer({bool validationSuperviseur = false}) async {
-    final envoi = _envoi ??= EnvoiEnregistrement(
-      api: widget.api,
-      fiche: _fiche,
-      doigts: [for (final iso in _doigts.keys.toList()..sort()) _doigts[iso]!],
-    );
-    if (validationSuperviseur) envoi.validerParSuperviseur();
     setState(() {
       _enCours = true;
       _erreur = null;
-      _issue = null;
     });
     try {
-      final issue = await envoi.continuer(progression: (e) => setState(() => _etapeEnvoi = e));
-      if (issue == IssueEnvoi.doublonPossible) {
-        // Pour savoir s'il faut proposer la validation (le serveur vérifie aussi).
-        _agent ??= await widget.api.moi();
+      var element = _element;
+      if (element == null) {
+        element = ElementAttente.nouveau(
+          agent: widget.agent.matricule,
+          fiche: _fiche,
+          doigts: [for (final iso in _doigts.keys.toList()..sort()) _doigts[iso]!],
+        );
+        await widget.services.file.enregistrer(element);
+        _element = element;
       }
-      setState(() => _issue = issue);
-    } on ErreurApi catch (e) {
-      setState(() => _erreur = e.message);
+      void progression(EtapeEnvoi e) => setState(() => _etapeEnvoi = e);
+      final r = validationSuperviseur
+          ? await _synchroniseur.validerEtEnvoyer(element)
+          : element.statut == StatutAttente.erreur
+              ? await _synchroniseur.reessayer(element)
+              : await _synchroniseur.envoyer(element, progression: progression);
+      setState(() => _resultat = r);
+    } on Exception catch (e) {
+      // Écriture impossible sur le téléphone (stockage plein…).
+      setState(() => _erreur = 'Enregistrement impossible sur le téléphone : $e');
     } finally {
       if (mounted) setState(() => _enCours = false);
     }
@@ -188,9 +199,10 @@ class _EcranNouvelleFicheState extends State<EcranNouvelleFiche> {
 
   // ---------------------------------------------------------------- affichage
 
-  /// Quitter fait perdre la saisie (pas encore de brouillon hors ligne).
+  /// Quitter avant « Enregistrer » fait perdre la saisie (elle n'est écrite
+  /// dans la file qu'à ce moment). Après, l'enregistrement est conservé.
   Future<bool> _confirmerSortie() async {
-    if (_issue == IssueEnvoi.termine) return true;
+    if (_element != null) return true;
     final quitter = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
@@ -207,9 +219,14 @@ class _EcranNouvelleFicheState extends State<EcranNouvelleFiche> {
 
   @override
   Widget build(BuildContext context) {
-    if (_issue == IssueEnvoi.termine) return _confirmation();
+    switch (_resultat?.issue) {
+      case IssueSync.envoye:
+        return _confirmation();
+      case IssueSync.horsLigne || IssueSync.reconnexion:
+        return _confirmationAttente();
+      default:
+    }
     final erreurs = _afficherErreurs ? _erreursEtape : const <String, String>{};
-    final envoiCommence = _envoi?.citoyen != null;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (aQuitte, _) async {
@@ -245,11 +262,11 @@ class _EcranNouvelleFicheState extends State<EcranNouvelleFiche> {
                 ],
                 Expanded(child: BoutonPrincipal(texte: 'Suivant', onPressed: _suivant)),
               ])
-            else if (_issue == null || _erreur != null)
+            else if (_resultat == null || _resultat!.issue == IssueSync.erreur)
               BoutonPrincipal(
                 texte: _enCours
                     ? EnvoiEnregistrement.libelles[_etapeEnvoi] ?? 'Envoi…'
-                    : (_erreur != null || envoiCommence ? 'Réessayer l\'envoi' : 'Enregistrer'),
+                    : (_element != null ? 'Réessayer l\'envoi' : 'Enregistrer'),
                 icone: Icons.cloud_upload_outlined,
                 enCours: _enCours,
                 onPressed: _envoyer,
@@ -381,7 +398,10 @@ class _EcranNouvelleFicheState extends State<EcranNouvelleFiche> {
 
   Widget _recapitulatif() {
     final f = _fiche;
-    final verrouille = _envoi?.citoyen != null; // fiche déjà créée : plus de modification
+    // Déjà écrite dans la file d'attente : plus de modification.
+    final verrouille = _element != null;
+    final controle = _element?.controle;
+    final aVerifier = _resultat?.issue == IssueSync.aVerifier;
     Widget section(String titre, int etape, List<(String, String)> lignes) => Card(
           color: Colors.white,
           elevation: 0,
@@ -427,23 +447,30 @@ class _EcranNouvelleFicheState extends State<EcranNouvelleFiche> {
         ('Signature', f.signature == null ? 'manquante' : 'faite'),
         ('Empreintes', '${_doigts.length} doigt(s) sur 10'),
       ]),
-      if (_issue == IssueEnvoi.doublonCertain)
+      if (_resultat?.issue == IssueSync.erreur)
+        Encadre(
+          titre: 'Refusé par le serveur',
+          texte: _resultat!.message,
+          couleur: Colors.red.shade700,
+          icone: Icons.error_outline,
+        ),
+      if (aVerifier && controle?.verdict == VerdictDoublon.doublonCertain)
         Encadre(
           titre: 'Personne déjà enregistrée',
-          texte: '${_envoi!.controle!.motif}\nFiche(s) : ${_envoi!.controle!.numeros.join(', ')}\n'
-              "L'enregistrement est arrêté : aucun numéro n'a été attribué.",
+          texte: '${controle!.motif}\nFiche(s) : ${controle.numeros.join(', ')}\n'
+              "L'enregistrement est arrêté et conservé dans « En attente » pour vérification.",
           couleur: Colors.red.shade700,
           icone: Icons.block,
         ),
-      if (_issue == IssueEnvoi.doublonPossible) ...[
+      if (aVerifier && controle?.verdict != VerdictDoublon.doublonCertain) ...[
         Encadre(
           titre: 'Doublon possible',
-          texte: '${_envoi!.controle!.motif}\nFiche(s) à vérifier : ${_envoi!.controle!.numeros.join(', ')}',
+          texte: '${controle?.motif ?? ''}\nFiche(s) à vérifier : ${controle?.numeros.join(', ') ?? ''}',
           couleur: Couleurs.dore,
           icone: Icons.warning_amber_rounded,
         ),
         const SizedBox(height: 12),
-        if (_agent?.peutValiderDoublon ?? false)
+        if (widget.agent.peutValiderDoublon && widget.api.connecte)
           BoutonPrincipal(
             texte: 'Valider après vérification (superviseur)',
             icone: Icons.admin_panel_settings_outlined,
@@ -453,15 +480,56 @@ class _EcranNouvelleFicheState extends State<EcranNouvelleFiche> {
         else
           const Text(
             "Un superviseur doit vérifier les fiches ci-dessus puis valider l'enregistrement "
-            'depuis son propre compte.',
+            'depuis « En attente », avec son propre compte.',
             style: TextStyle(color: Colors.black54),
           ),
       ],
     ]);
   }
 
+  void _autrePersonne() => Navigator.pushReplacement(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => EcranNouvelleFiche(
+            api: widget.api,
+            services: widget.services,
+            agent: widget.agent,
+            source: widget.source,
+            sourcePhoto: widget.sourcePhoto,
+          ),
+        ),
+      );
+
+  /// Envoi impossible pour l'instant : enregistrement gardé sur le téléphone.
+  Widget _confirmationAttente() => Scaffold(
+        appBar: barreHawiya('Enregistrement en attente'),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          children: [
+            const Icon(Icons.cloud_off_outlined, color: Couleurs.dore, size: 72),
+            const SizedBox(height: 12),
+            Text('Enregistré sur le téléphone',
+                textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 8),
+            Text(
+              '${_element!.nomComplet} · référence provisoire ${_element!.reference}\n\n'
+              '${_resultat!.issue == IssueSync.reconnexion ? 'Connexion en ligne nécessaire' : 'Serveur injoignable'} : '
+              "l'enregistrement est gardé, chiffré, et sera envoyé à la synchronisation. "
+              "Le contrôle anti-doublon et le numéro d'identification se feront à ce moment.",
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            BoutonPrincipal(texte: 'Enregistrer une autre personne', icone: Icons.person_add_alt, onPressed: _autrePersonne),
+            const SizedBox(height: 8),
+            BoutonSecondaire(texte: "Retour à l'accueil", icone: Icons.home_outlined, onPressed: () => Navigator.pop(context)),
+            const PiedPrototype(),
+          ],
+        ),
+      );
+
   Widget _confirmation() {
-    final c = _envoi!.citoyen!;
+    final c = _resultat!.citoyen;
+    final numero = _resultat!.element.numero ?? c?.numero ?? '';
     return Scaffold(
       appBar: barreHawiya('Enregistrement terminé'),
       body: ListView(
@@ -470,21 +538,16 @@ class _EcranNouvelleFicheState extends State<EcranNouvelleFiche> {
           const Icon(Icons.check_circle, color: Couleurs.validation, size: 72),
           const SizedBox(height: 12),
           const Text("Numéro d'identification", textAlign: TextAlign.center, style: TextStyle(color: Colors.black54)),
-          SelectableText(c.numero,
+          SelectableText(numero,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: Couleurs.vertProfond)),
           const SizedBox(height: 16),
-          FicheCitoyen(citoyen: c),
+          if (c != null) FicheCitoyen(citoyen: c),
           const SizedBox(height: 20),
           BoutonPrincipal(
             texte: 'Enregistrer une autre personne',
             icone: Icons.person_add_alt,
-            onPressed: () => Navigator.pushReplacement(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => EcranNouvelleFiche(api: widget.api, source: widget.source, sourcePhoto: widget.sourcePhoto),
-              ),
-            ),
+            onPressed: _autrePersonne,
           ),
           const SizedBox(height: 8),
           BoutonSecondaire(texte: "Retour à l'accueil", icone: Icons.home_outlined, onPressed: () => Navigator.pop(context)),

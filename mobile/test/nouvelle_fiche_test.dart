@@ -12,6 +12,7 @@ import 'package:hawiya/fiche/signature.dart';
 import 'package:hawiya/fiche/source_photo.dart';
 import 'package:hawiya/parcours/source_capture.dart';
 
+import 'aides.dart';
 import 'envoi_test.dart' show FauxServeur;
 import 'fiche_test.dart' show ficheComplete, imageFictive;
 import 'parcours_test.dart' show decoupe;
@@ -64,7 +65,7 @@ void main() {
   testWidgets("formulaire vide : on ne passe pas, les erreurs s'affichent", (tester) async {
     final serveur = FauxServeur();
     await serveur.client.connexion('AG-0001', 'x');
-    await ouvrir(tester, EcranNouvelleFiche(api: serveur.client, source: CameraComplete(), sourcePhoto: FaussePhoto()));
+    await ouvrir(tester, EcranNouvelleFiche(api: serveur.client, services: servicesDeTest(), agent: agentFictif, source: CameraComplete(), sourcePhoto: FaussePhoto()));
 
     await toucher(tester, 'Suivant');
     expect(find.text('Identité'), findsOneWidget); // toujours à l'étape 1
@@ -85,7 +86,7 @@ void main() {
       ..signature = null;
     await ouvrir(
       tester,
-      EcranNouvelleFiche(api: serveur.client, source: camera, sourcePhoto: FaussePhoto(), brouillon: fiche),
+      EcranNouvelleFiche(api: serveur.client, services: servicesDeTest(), agent: agentFictif, source: camera, sourcePhoto: FaussePhoto(), brouillon: fiche),
     );
 
     await toucher(tester, 'Suivant'); // identité pré-remplie
@@ -125,7 +126,7 @@ void main() {
     await serveur.client.connexion('AG-0001', 'x');
     await ouvrir(
       tester,
-      EcranNouvelleFiche(api: serveur.client, source: CameraComplete(), sourcePhoto: FaussePhoto(), brouillon: ficheComplete()),
+      EcranNouvelleFiche(api: serveur.client, services: servicesDeTest(), agent: agentFictif, source: CameraComplete(), sourcePhoto: FaussePhoto(), brouillon: ficheComplete()),
     );
     for (var i = 0; i < 3; i++) {
       await toucher(tester, 'Suivant');
@@ -146,7 +147,7 @@ void main() {
         builder: (context) => TextButton(
           onPressed: () => Navigator.push(
             context,
-            MaterialPageRoute<void>(builder: (_) => EcranNouvelleFiche(api: serveur.client)),
+            MaterialPageRoute<void>(builder: (_) => EcranNouvelleFiche(api: serveur.client, services: servicesDeTest(), agent: agentFictif)),
           ),
           child: const Text('ouvrir'),
         ),

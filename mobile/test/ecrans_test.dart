@@ -14,6 +14,7 @@ import 'package:hawiya/parcours/source_capture.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'aides.dart';
 import 'api_test.dart' show ficheFictive, json;
 import 'parcours_test.dart' show decoupe;
 
@@ -172,6 +173,7 @@ void main() {
     await ouvrir(
       tester,
       EcranConnexion(
+        services: servicesDeTest(),
         fabriqueClient: (adresse) =>
             ClientApi(adresse, client: MockClient((_) async => json({'detail': 'refus'}, 401))),
       ),

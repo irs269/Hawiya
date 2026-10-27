@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
 
 import '../api/client_api.dart';
+import '../api/modeles.dart';
 import '../capture/ecran_capture.dart';
+import '../hors_ligne/services.dart';
 import '../theme/couleurs.dart';
 import 'communs.dart';
 import 'ecran_accueil.dart';
 
 /// Connexion de l'agent (matricule + mot de passe) et adresse du serveur.
+///
+/// Sans réseau, un agent déjà connecté une fois EN LIGNE sur ce téléphone peut
+/// se reconnecter hors ligne : il peut alors enregistrer (mis en attente),
+/// mais ni identifier ni synchroniser.
 class EcranConnexion extends StatefulWidget {
-  const EcranConnexion({super.key, this.fabriqueClient = _clientParDefaut});
+  const EcranConnexion({super.key, required this.services, this.fabriqueClient = _clientParDefaut});
+
+  final ServicesHorsLigne services;
 
   /// Remplaçable dans les tests (faux serveur).
   final ClientApi Function(String adresse) fabriqueClient;
@@ -28,6 +36,14 @@ class _EcranConnexionState extends State<EcranConnexion> {
   String? _erreur;
 
   @override
+  void initState() {
+    super.initState();
+    widget.services.identifiants.derniereAdresse().then((a) {
+      if (a != null && mounted) _adresse.text = a;
+    });
+  }
+
+  @override
   void dispose() {
     _adresse.dispose();
     _matricule.dispose();
@@ -36,7 +52,9 @@ class _EcranConnexionState extends State<EcranConnexion> {
   }
 
   Future<void> _seConnecter() async {
-    if (_matricule.text.trim().isEmpty || _motDePasse.text.isEmpty) {
+    final matricule = _matricule.text.trim();
+    final motDePasse = _motDePasse.text;
+    if (matricule.isEmpty || motDePasse.isEmpty) {
       setState(() => _erreur = 'Saisissez le matricule et le mot de passe.');
       return;
     }
@@ -46,10 +64,29 @@ class _EcranConnexionState extends State<EcranConnexion> {
     });
     final api = widget.fabriqueClient(_adresse.text);
     try {
-      await api.connexion(_matricule.text, _motDePasse.text);
+      AgentConnecte agent;
+      try {
+        await api.connexion(matricule, motDePasse);
+        agent = await api.moi();
+        // Pour pouvoir se reconnecter plus tard sans réseau.
+        await widget.services.identifiants.memoriser(matricule, motDePasse, agent: agent, adresse: api.adresse);
+      } on ErreurApi catch (e) {
+        if (e.code != null) rethrow; // refus du serveur : pas de repli hors ligne
+        final connu = await widget.services.identifiants.verifier(matricule, motDePasse);
+        if (connu == null) {
+          throw const ErreurApi(
+            'Serveur injoignable. La connexion hors ligne n\'est possible qu\'après une première '
+            'connexion en ligne sur ce téléphone, avec le même matricule et mot de passe.',
+          );
+        }
+        agent = connu;
+      }
       if (!mounted) return;
       _motDePasse.clear();
-      await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => EcranAccueil(api: api)));
+      await Navigator.push(
+        context,
+        MaterialPageRoute<void>(builder: (_) => EcranAccueil(api: api, services: widget.services, agent: agent)),
+      );
     } on ErreurApi catch (e) {
       if (mounted) setState(() => _erreur = e.message);
     } finally {
@@ -63,20 +100,20 @@ class _EcranConnexionState extends State<EcranConnexion> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 32, 20, 24),
             children: [
-              const Text('Hawiya',
-                  style: TextStyle(fontSize: 36, fontWeight: FontWeight.w700, color: Couleurs.vertProfond)),
+              Text('Hawiya', style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: Couleurs.vertProfond, fontSize: 36)),
               const Text('Votre main suffit.', style: TextStyle(fontSize: 16, color: Couleurs.dore)),
               const SizedBox(height: 28),
               TextField(
                 controller: _matricule,
-                decoration: const InputDecoration(labelText: 'Matricule agent', border: OutlineInputBorder()),
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(labelText: 'Matricule agent'),
                 textInputAction: TextInputAction.next,
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _motDePasse,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: 'Mot de passe', border: OutlineInputBorder()),
+                decoration: const InputDecoration(labelText: 'Mot de passe'),
                 onSubmitted: (_) => _seConnecter(),
               ),
               const SizedBox(height: 12),
@@ -86,7 +123,6 @@ class _EcranConnexionState extends State<EcranConnexion> {
                 decoration: const InputDecoration(
                   labelText: 'Adresse du serveur',
                   helperText: 'Ex. http://192.168.1.10:8000 (PC sur le même Wi-Fi)',
-                  border: OutlineInputBorder(),
                 ),
               ),
               if (_erreur != null) ...[

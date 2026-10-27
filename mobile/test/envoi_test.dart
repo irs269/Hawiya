@@ -21,17 +21,31 @@ class FauxServeur {
   final corps = <String, Map<String, dynamic>>{};
   bool panneMedias = false;
 
+  /// Plus aucun réseau (sauf la connexion déjà faite).
+  bool horsLigne = false;
+
+  /// Code d'erreur renvoyé à la création de la fiche (ex. 422).
+  int? refusCreation;
+
   late final client = ClientApi('http://serveur', client: MockClient(_repondre));
 
   Future<http.Response> _repondre(http.Request r) async {
     final cle = '${r.method} ${r.url.path}';
     if (r.url.path == '/auth/connexion') return json({'access_token': 'jeton-fictif'});
+    if (horsLigne) throw http.ClientException('réseau coupé');
     appels.add(cle);
     if (r.body.isNotEmpty) corps[cle] = jsonDecode(r.body) as Map<String, dynamic>;
     switch (cle) {
       case 'POST /doublons':
         return json({'verdict': doublon, 'motif': 'motif fictif', 'numeros': doublon == 'aucun_doublon' ? [] : ['KM-2026-000007-B']});
       case 'POST /citoyens':
+        if (refusCreation != null) {
+          return json({
+            'detail': [
+              {'loc': ['body', 'taille_cm'], 'msg': 'valeur refusée'},
+            ],
+          }, refusCreation!);
+        }
         return json(ficheFictive, 201);
       case 'PUT /citoyens/KM-2026-000001-A/medias':
         if (panneMedias) throw http.ClientException('réseau coupé');

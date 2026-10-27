@@ -3,6 +3,7 @@
 /// tout ; ces contrôles servent à corriger la saisie avant l'envoi.
 library;
 
+import 'dart:convert';
 import 'dart:typed_data';
 
 /// Code envoyé au serveur → libellé affiché.
@@ -75,6 +76,37 @@ class BrouillonFiche {
         'couleur_yeux': couleurYeux,
         'couleur_cheveux': couleurCheveux,
       };
+
+  /// Tout le brouillon, photo et signature comprises (stockage chiffré hors ligne).
+  Map<String, Object?> versStockage() => {
+        ...versJson(),
+        'telephone': telephone,
+        'taille': taille,
+        'photo': photo == null ? null : base64Encode(photo!),
+        'signature': signature == null ? null : base64Encode(signature!),
+      }..remove('taille_cm');
+
+  static BrouillonFiche depuisStockage(Map<String, dynamic> j) {
+    Uint8List? image(Object? v) => v == null ? null : base64Decode(v as String);
+    return BrouillonFiche()
+      ..nom = j['nom'] as String? ?? ''
+      ..prenoms = j['prenoms'] as String? ?? ''
+      ..sexe = j['sexe'] as String?
+      ..dateNaissance = j['date_naissance'] == null ? null : DateTime.parse(j['date_naissance'] as String)
+      ..lieuNaissance = j['lieu_naissance'] as String? ?? ''
+      ..nationalite = j['nationalite'] as String? ?? 'Comorienne'
+      ..numeroActeNaissance = j['numero_acte_naissance'] as String? ?? ''
+      ..telephone = j['telephone'] as String? ?? ''
+      ..ile = j['ile'] as String?
+      ..ville = j['ville'] as String? ?? ''
+      ..quartier = j['quartier'] as String? ?? ''
+      ..adresse = j['adresse'] as String? ?? ''
+      ..taille = j['taille'] as String? ?? ''
+      ..couleurYeux = j['couleur_yeux'] as String?
+      ..couleurCheveux = j['couleur_cheveux'] as String?
+      ..photo = image(j['photo'])
+      ..signature = image(j['signature']);
+  }
 
   static String _date(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';

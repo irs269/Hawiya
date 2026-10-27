@@ -91,6 +91,8 @@ Ces routes demandent que le matcher soit démarré. Le téléphone envoie les d�
 5. **Identifier une personne** : choisir la main, puis scanner.
 6. **Compléter les empreintes d'une fiche** : pour une fiche fictive déjà en base (données de démonstration).
 
+**Sans réseau** : après une première connexion en ligne, l'agent peut se connecter et enregistrer hors ligne. Les enregistrements sont gardés **chiffrés** sur le téléphone et envoyés automatiquement au retour du réseau. Voir [`docs/rapport-hors-ligne.md`](docs/rapport-hors-ligne.md).
+
 Règle : **ne jamais afficher la fiche d'une autre personne**. En cas de doute, la réponse est `non_concluant` : l'agent recommence le scan, puis passe à une vérification manuelle sur pièce d'identité. Conditions et seuils provisoires : [`docs/evaluation/diagnostic-phase4.md`](docs/evaluation/diagnostic-phase4.md).
 
 ## Règles du projet
