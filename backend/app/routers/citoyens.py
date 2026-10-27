@@ -1,15 +1,17 @@
-"""Création, lecture et recherche des fiches de citoyens."""
+"""Création, lecture et recherche des fiches de citoyens, photo et signature."""
 
+import base64
+import binascii
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
 
 from app.dependances import AgentCourant, SessionDb
 from app.journal import journaliser
-from app.models import Citoyen
+from app.models import Citoyen, CitoyenMedia
 from app.numero import attribuer_numero, normaliser_numero
-from app.schemas import CitoyenCreation, CitoyenLecture, Ile, PageCitoyens
+from app.schemas import CitoyenCreation, CitoyenLecture, EtatMedias, Ile, MediasCitoyen, PageCitoyens
 
 router = APIRouter(prefix="/citoyens", tags=["Citoyens"])
 
@@ -97,3 +99,74 @@ def lire_citoyen(numero: str, agent: AgentCourant, db: SessionDb):
     if citoyen is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fiche introuvable")
     return citoyen
+
+
+# --- Photo du visage et signature ---
+
+# Signatures des formats acceptés (premiers octets du fichier).
+_FORMATS = {b"\xff\xd8\xff": "image/jpeg", b"\x89PNG\r\n\x1a\n": "image/png"}
+TAILLE_MAX_MEDIA = 2 * 1024 * 1024
+
+
+def _decoder_media(contenu: str, champ: str, formats: tuple[str, ...]) -> tuple[bytes, str]:
+    """base64 → (octets, type MIME) ; refuse ce qui n'est pas une vraie image JPEG/PNG."""
+    try:
+        octets = base64.b64decode(contenu, validate=True)
+    except (binascii.Error, ValueError) as erreur:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{champ} : base64 invalide") from erreur
+    if len(octets) > TAILLE_MAX_MEDIA:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{champ} : image trop lourde (2 Mo au plus)")
+    for entete, mime in _FORMATS.items():
+        if octets.startswith(entete) and mime in formats:
+            return octets, mime
+    raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{champ} : format non accepté ({', '.join(formats)})")
+
+
+def _fiche(db, numero: str) -> Citoyen:
+    citoyen = db.scalar(select(Citoyen).where(Citoyen.numero == normaliser_numero(numero)))
+    if citoyen is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fiche introuvable")
+    return citoyen
+
+
+@router.put("/{numero}/medias", response_model=EtatMedias)
+def enregistrer_medias(numero: str, donnees: MediasCitoyen, agent: AgentCourant, db: SessionDb):
+    """Enregistre la photo du visage et/ou la signature d'une fiche.
+    (Chiffrement au repos : phase 7.)"""
+    citoyen = _fiche(db, numero)
+    medias = db.get(CitoyenMedia, citoyen.id) or CitoyenMedia(citoyen_id=citoyen.id)
+    if donnees.photo is not None:
+        medias.photo, medias.photo_type_mime = _decoder_media(donnees.photo, "Photo", ("image/jpeg", "image/png"))
+    if donnees.signature is not None:
+        medias.signature, _ = _decoder_media(donnees.signature, "Signature", ("image/png",))
+    medias.mis_a_jour_le = func.now()
+    db.add(medias)
+    journaliser(
+        db,
+        "citoyen_medias",
+        agent_id=agent.id,
+        cible=citoyen.numero,
+        details={"photo": donnees.photo is not None, "signature": donnees.signature is not None},
+    )
+    db.commit()
+    return EtatMedias(photo=medias.photo is not None, signature=medias.signature is not None)
+
+
+@router.get("/{numero}/photo", response_class=Response, responses={200: {"content": {"image/jpeg": {}, "image/png": {}}}})
+def lire_photo(numero: str, agent: AgentCourant, db: SessionDb):
+    """Photo du visage de la fiche (404 si aucune)."""
+    citoyen = _fiche(db, numero)
+    medias = db.get(CitoyenMedia, citoyen.id)
+    if medias is None or medias.photo is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pas de photo")
+    return Response(medias.photo, media_type=medias.photo_type_mime or "image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@router.get("/{numero}/signature", response_class=Response, responses={200: {"content": {"image/png": {}}}})
+def lire_signature(numero: str, agent: AgentCourant, db: SessionDb):
+    """Signature de la fiche, en PNG (404 si aucune)."""
+    citoyen = _fiche(db, numero)
+    medias = db.get(CitoyenMedia, citoyen.id)
+    if medias is None or medias.signature is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pas de signature")
+    return Response(medias.signature, media_type="image/png", headers={"Cache-Control": "no-store"})

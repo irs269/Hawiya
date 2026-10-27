@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/client_api.dart';
 import '../capture/ecran_capture.dart';
+import '../fiche/ecran_nouvelle_fiche.dart';
 import '../theme/couleurs.dart';
 import 'communs.dart';
 import 'ecran_enregistrement.dart';
@@ -32,6 +33,13 @@ class EcranAccueil extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
           children: [
             _Tuile(
+              icone: Icons.person_add_alt_1_outlined,
+              titre: 'Enregistrer une personne',
+              texte: 'Identité, domicile, photo, signature et 10 empreintes.',
+              onTap: () => _ouvrir(context, EcranNouvelleFiche(api: api)),
+            ),
+            const SizedBox(height: 12),
+            _Tuile(
               icone: Icons.fingerprint,
               titre: 'Identifier une personne',
               texte: 'Scanner une main et retrouver la fiche.',
@@ -40,8 +48,8 @@ class EcranAccueil extends StatelessWidget {
             const SizedBox(height: 12),
             _Tuile(
               icone: Icons.how_to_reg_outlined,
-              titre: 'Enregistrer des empreintes',
-              texte: "Ajouter les 10 doigts à une fiche existante.",
+              titre: "Compléter les empreintes d'une fiche",
+              texte: 'Ajouter ou refaire les empreintes d\'une fiche existante.',
               onTap: () => _ouvrir(context, EcranEnregistrement(api: api)),
             ),
             const SizedBox(height: 12),

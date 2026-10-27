@@ -144,6 +144,8 @@ def controler_doublon(scan: ScanMain, agent: AgentCourant, db: SessionDb, client
     « doublon_possible » : l'enregistrement doit attendre un superviseur."""
     try:
         modeles, _, illisibles = service.extraire(client, _decoder(scan.doigts))
+        if not modeles:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Aucun doigt exploitable : recommencer la capture")
         reponse = _controle(db, client, modeles, illisibles)
     except ErreurMatcher as erreur:
         raise _indisponible(erreur) from erreur

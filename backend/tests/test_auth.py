@@ -75,3 +75,13 @@ def test_jeton_expire_refuse(client, agent):
         algorithm=parametres.jwt_algorithme,
     )
     assert client.get("/citoyens", headers={"Authorization": f"Bearer {expire}"}).status_code == 401
+
+
+def test_agent_connecte(client, entetes, agent):
+    reponse = client.get("/auth/moi", headers=entetes)
+    assert reponse.status_code == 200
+    assert reponse.json() == {"matricule": agent.matricule, "nom": "Agent fictif", "role": "agent"}
+
+
+def test_agent_connecte_sans_jeton(client):
+    assert client.get("/auth/moi").status_code == 401

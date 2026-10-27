@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 
-from app.dependances import SessionDb
+from app.dependances import AgentCourant, SessionDb
 from app.journal import journaliser
 from app.models import Agent
-from app.schemas import Jeton
+from app.schemas import AgentMoi, Jeton
 from app.securite import HASH_FACTICE, creer_jeton, verifier_mot_de_passe
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
@@ -50,3 +50,10 @@ def connexion(formulaire: Annotated[OAuth2PasswordRequestForm, Depends()], db: S
     journaliser(db, "connexion_reussie", agent_id=agent.id, cible=agent.matricule)
     db.commit()
     return Jeton(access_token=creer_jeton(agent.id))
+
+
+@router.get("/moi", response_model=AgentMoi)
+def moi(agent: AgentCourant):
+    """Agent connecté : l'application adapte ses boutons à son rôle (le serveur
+    vérifie de toute façon les droits à chaque action)."""
+    return agent

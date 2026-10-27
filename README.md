@@ -78,6 +78,8 @@ Ces routes demandent que le matcher soit démarré. Le téléphone envoie les d�
 |---|---|
 | `POST /doublons` | contrôle anti-doublon **avant** de créer la fiche (rien n'est enregistré) |
 | `PUT /citoyens/{numero}/empreintes` | enregistre les modèles. En cas de doublon certain ou possible : refus (409), sauf validation explicite d'un superviseur |
+| `PUT /citoyens/{numero}/medias` | photo du visage (JPEG/PNG) et signature (PNG), 2 Mo au plus |
+| `GET /citoyens/{numero}/photo` · `/signature` | relecture de la photo ou de la signature |
 | `POST /identification` | un à trois scans de la main → `identifie` (avec la fiche), `non_enregistre` ou `non_concluant` |
 
 ### Démo avec l'application mobile
@@ -85,8 +87,9 @@ Ces routes demandent que le matcher soit démarré. Le téléphone envoie les d�
 1. Sur le PC : `docker compose up` (backend, base, matcher), puis `docker compose exec backend python -m app.seed --reset` pour les fiches fictives.
 2. Téléphone et PC sur le **même Wi-Fi**. Installer la version de débogage : `flutter run` dans `mobile/`. Elle seule autorise le HTTP non chiffré vers le PC.
 3. Dans l'application : saisir l'adresse du PC (ex. `http://192.168.1.10:8000`), puis le matricule et le mot de passe de l'agent de démonstration.
-4. **Enregistrer des empreintes** : saisir le numéro d'une fiche fictive, puis capturer les 4 étapes.
+4. **Enregistrer une personne** : identité, domicile et signalement, photo et signature, 10 empreintes, puis récapitulatif. L'envoi fait le contrôle anti-doublon **avant** d'attribuer le numéro.
 5. **Identifier une personne** : choisir la main, puis scanner.
+6. **Compléter les empreintes d'une fiche** : pour une fiche fictive déjà en base (données de démonstration).
 
 Règle : **ne jamais afficher la fiche d'une autre personne**. En cas de doute, la réponse est `non_concluant` : l'agent recommence le scan, puis passe à une vérification manuelle sur pièce d'identité. Conditions et seuils provisoires : [`docs/evaluation/diagnostic-phase4.md`](docs/evaluation/diagnostic-phase4.md).
 

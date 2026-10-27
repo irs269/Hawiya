@@ -253,3 +253,8 @@ def test_meme_doigt_deux_fois(client, entetes, faux):
 def test_authentification_obligatoire(client, faux):
     assert client.post("/identification", json={"scans": [{"doigts": main(1)}]}).status_code == 401
     assert client.post("/doublons", json={"doigts": main(1)}).status_code == 401
+
+
+def test_controle_doublon_sans_doigt_lisible(client, entetes, faux):
+    illisibles = [{"doigt": d, "image": base64.b64encode(b"pas une image").decode(), "dpi_estime": 550} for d in (2, 3)]
+    assert client.post("/doublons", json={"doigts": illisibles}, headers=entetes).status_code == 422

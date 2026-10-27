@@ -182,6 +182,10 @@ def decider_apres_plusieurs_scans(
 def decider_doublon(candidats: list[Candidat], doigts_sonde: int, seuils: Seuils = Seuils()) -> DecisionDoublon:
     """Anti-doublon à l'enregistrement (10 doigts en général). Au moindre doute :
     DOUBLON_POSSIBLE, l'enregistrement attend la validation d'un superviseur."""
+    if doigts_sonde < seuils.doigts_min and not candidats:
+        # Trop peu de doigts lisibles : on ne peut pas affirmer l'absence de doublon,
+        # même si la base est vide.
+        return DecisionDoublon(VerdictDoublon.DOUBLON_POSSIBLE, [], "Trop peu de doigts exploitables pour conclure.")
     if not candidats:
         return DecisionDoublon(VerdictDoublon.AUCUN_DOUBLON, motif="Base vide.")
     candidats = sorted(candidats, key=lambda c: c.score, reverse=True)

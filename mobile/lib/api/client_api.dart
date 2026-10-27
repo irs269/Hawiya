@@ -67,6 +67,13 @@ class ClientApi {
       final corps = jsonDecode(utf8.decode(r.bodyBytes));
       final detail = corps is Map ? corps['detail'] : null;
       if (detail is String) return detail;
+      // Erreurs de validation FastAPI : liste de {loc, msg}.
+      if (detail is List && detail.isNotEmpty) {
+        return [
+          for (final e in detail.take(3))
+            if (e is Map) '${(e['loc'] as List?)?.last ?? ''} : ${e['msg']}',
+        ].join('\n');
+      }
       if (detail is Map && detail['motif'] is String) return detail['motif'] as String;
     } catch (_) {}
     return switch (r.statusCode) {
@@ -105,6 +112,41 @@ class ClientApi {
   }
 
   void deconnexion() => _jeton = null;
+
+  Future<AgentConnecte> moi() async {
+    final r = await _envoyer(() => _http.get(_uri('/auth/moi'), headers: _entetes));
+    _verifier(r);
+    return AgentConnecte.depuisJson(_json(r));
+  }
+
+  /// Crée la fiche (POST /citoyens) ; le serveur attribue le numéro.
+  Future<Citoyen> creerCitoyen(Map<String, Object?> fiche) async {
+    final r = await _envoyer(() => _http.post(_uri('/citoyens'), headers: _entetes, body: jsonEncode(fiche)));
+    _verifier(r);
+    return Citoyen.depuisJson(_json(r));
+  }
+
+  /// Photo du visage (JPEG/PNG) et signature (PNG) d'une fiche.
+  Future<void> envoyerMedias(String numero, {List<int>? photo, List<int>? signature}) async {
+    final corps = jsonEncode({
+      if (photo != null) 'photo': base64Encode(photo),
+      if (signature != null) 'signature': base64Encode(signature),
+    });
+    final r = await _envoyer(() => _http.put(
+          _uri('/citoyens/${Uri.encodeComponent(numero.trim())}/medias'),
+          headers: _entetes,
+          body: corps,
+        ));
+    _verifier(r);
+  }
+
+  /// Contrôle anti-doublon AVANT la création de la fiche (rien n'est enregistré).
+  Future<ControleDoublon> controlerDoublon(List<DoigtEnvoi> doigts) async {
+    final corps = jsonEncode({'doigts': _doigtsJson(doigts)});
+    final r = await _envoyer(() => _http.post(_uri('/doublons'), headers: _entetes, body: corps));
+    _verifier(r);
+    return ControleDoublon.depuisJson(_json(r));
+  }
 
   Future<Citoyen> lireCitoyen(String numero) async {
     final r = await _envoyer(() => _http.get(_uri('/citoyens/${Uri.encodeComponent(numero.trim())}'), headers: _entetes));

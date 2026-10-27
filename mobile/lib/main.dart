@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'ecrans/ecran_connexion.dart';
-import 'theme/couleurs.dart';
+import 'theme/theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,17 +19,13 @@ class HawiyaApp extends StatelessWidget {
     return MaterialApp(
       title: 'Hawiya',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Couleurs.vertProfond,
-          primary: Couleurs.vertProfond,
-          secondary: Couleurs.dore,
-          surface: Couleurs.ivoire,
-        ),
-        scaffoldBackgroundColor: Couleurs.ivoire,
-      ),
-      // Connexion de l'agent → accueil (identification, enregistrement des
-      // empreintes, test de capture). Les formulaires de fiche : phase 2.
+      theme: themeHawiya(),
+      // Interface en français (calendrier, boutons système…).
+      locale: const Locale('fr'),
+      supportedLocales: const [Locale('fr')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      // Connexion de l'agent → accueil (enregistrer une personne, identifier,
+      // compléter les empreintes d'une fiche, test de capture).
       home: const EcranConnexion(),
     );
   }

@@ -52,6 +52,23 @@ class Citoyen {
       );
 }
 
+/// Agent connecté (GET /auth/moi).
+class AgentConnecte {
+  const AgentConnecte({required this.matricule, required this.nom, required this.role});
+
+  final String matricule;
+  final String nom;
+
+  /// « agent », « superviseur » ou « administrateur ».
+  final String role;
+
+  /// Peut valider un doublon possible (le serveur le vérifie aussi).
+  bool get peutValiderDoublon => role == 'superviseur' || role == 'administrateur';
+
+  factory AgentConnecte.depuisJson(Map<String, dynamic> j) =>
+      AgentConnecte(matricule: j['matricule'] as String, nom: j['nom'] as String, role: j['role'] as String);
+}
+
 /// Un doigt à envoyer : image de la découpe (PNG) et résolution estimée.
 /// L'image sert au calcul du modèle sur le serveur, qui ne la garde pas.
 class DoigtEnvoi {

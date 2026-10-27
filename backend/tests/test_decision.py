@@ -173,3 +173,8 @@ def test_aucun_doublon_impossible_a_affirmer_avec_trop_peu_de_doigts():
 
 def test_doublon_base_vide():
     assert decider_doublon([], 10).verdict == VerdictDoublon.AUCUN_DOUBLON
+
+
+def test_base_vide_mais_trop_peu_de_doigts():
+    """Même sans personne en base, 2 doigts lisibles ne permettent pas d'affirmer « aucun doublon »."""
+    assert decider_doublon([], 2).verdict == VerdictDoublon.DOUBLON_POSSIBLE

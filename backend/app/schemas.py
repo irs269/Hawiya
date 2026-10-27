@@ -31,6 +31,14 @@ class Jeton(BaseModel):
     token_type: str = "bearer"
 
 
+class AgentMoi(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    matricule: str
+    nom: str
+    role: str
+
+
 class CitoyenChamps(BaseModel):
     """Champs d'une fiche, communs à la création et à la lecture."""
 
@@ -185,3 +193,22 @@ class ReponseEmpreintes(BaseModel):
     doigts_enregistres: list[int]
     doigts_illisibles: list[int]
     controle_doublon: ReponseDoublon
+
+
+# --- Photo du visage et signature ---
+
+# Image encodée en base64 : ~2 Mo au plus une fois décodée.
+TAILLE_MAX_MEDIA_B64 = 2_800_000
+
+
+class MediasCitoyen(BaseModel):
+    """Photo du visage (JPEG ou PNG) et signature (PNG), en base64.
+    Un champ absent laisse la valeur enregistrée inchangée."""
+
+    photo: str | None = Field(default=None, max_length=TAILLE_MAX_MEDIA_B64)
+    signature: str | None = Field(default=None, max_length=TAILLE_MAX_MEDIA_B64)
+
+
+class EtatMedias(BaseModel):
+    photo: bool
+    signature: bool
